@@ -1,0 +1,13 @@
+On startup:
+    Load an instance of BooruWallpaper with settings from config
+    Update settings from args
+On setting tags or imageboard:
+    Get a new image from the imageboard with those tags, and set it as the wallpaper
+On setting duration or edits:
+    Reset the timer or edit the image, but do not load a new image
+On timer or next command:
+    Load a new image from imageboard with those tags, and edit it
+On view command:
+    Load the application and do not get a new image
+On end:
+    Store settings in config
