@@ -1,5 +1,4 @@
 #!/usr/bin/env python3.6
-# pylint: skip-file
 """Command-line interface and script to set the desktop wallpaper to a
 new image from an imageboard every so often.
 
