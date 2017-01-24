@@ -7,8 +7,8 @@ I like Muzei and the [Muzei Client](http://forum.xda-developers.com/android/gene
 
 ## Dependencies
 * Python 3.6
-* Pillow module
-* Cronjob module
+* Pillow package
+* python-crontab package
 
 **Please note that nothing but the `XD.py` script works right now.**
 
