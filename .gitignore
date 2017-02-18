@@ -1,1 +1,7 @@
 __pycache__
+*.ini
+*.json
+*.log
+*.html
+wallpaper.jpg
+wallpaper.png
