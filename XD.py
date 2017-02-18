@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Another version. Features added when I feel like it."""
 import sys
 import os.path
@@ -8,14 +8,35 @@ import argparse
 import urllib.parse
 import urllib.request
 import json
+import configparser
 import tkinter
 import ctypes
 import logging
 
-import crontab
+# XXX: Undo comment
+# import crontab
 
-logging.basicConfig(format='{levelname}: {message}', style='{', level='INFO')
+script_path = os.path.realpath(__file__)
+this_directory = os.path.dirname(script_path)
+# config_path = os.path.join(this_directory, 'config.json')
+config_path = os.path.join(this_directory, 'config.ini')
+data_path = os.path.join(this_directory, 'data.json')
+cron_path = os.path.join(this_directory, 'schedule.tab')
+log_path = os.path.join(this_directory, 'log.log')
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+debug_handler = logging.FileHandler(log_path, mode='w')
+debug_handler.setLevel(logging.DEBUG)
+debug_formatter = logging.Formatter(
+    '{asctime} - {name}:{levelname}: {message}', style='{')
+debug_handler.setFormatter(debug_formatter)
+terminal_handler = logging.StreamHandler()
+terminal_handler.setLevel(logging.INFO)
+terminal_formatter = logging.Formatter('{levelname}: {message}', style='{')
+terminal_handler.setFormatter(terminal_formatter)
+logger.addHandler(debug_handler)
+logger.addHandler(terminal_handler)
 
 
 def gram_join(string, splitter=' ', joiner=', ', final_joiner=' and '):
@@ -53,7 +74,10 @@ def get_image(tags, imageboard, attempts=1, size=1.0):
                     data = json.loads(request.read().decode('utf-8'))[0]
         except urllib.error.HTTPError as original_error:
             logger.error(original_error)
-            raise ValueError('Probably too many tags') from None
+            raise ValueError('Probably too many tags') from original_error
+        except urllib.error.URLError as original_error:
+            logger.error(original_error)
+            raise SystemError('No internet connection') from original_error
         good_fit = (data['image_height'] >= screen_height * size
                     and data['image_width'] >= screen_width * size)
         if data and good_fit:
@@ -66,52 +90,78 @@ def get_image(tags, imageboard, attempts=1, size=1.0):
             error = "Image wasn't big enough"
         else:
             error = '¯\_(ツ)_/¯'
-        raise ValueError(f'Image getting failed. {error}') from None
+        raise ValueError(f'Image getting failed. {error}')
 
     return data
 
 
-def download(url, filename, directory=None):
-    """Download a file from a url and return its path."""
-    if directory is None:
-        directory = os.path.dirname(os.path.realpath(__file__))
-    path = os.path.join(directory, filename)
+def download(url, file_path):
+    """Download a file from a url."""
     logger.info('Downloading image...')
-    urllib.request.urlretrieve(url, path)
-    return path
+    urllib.request.urlretrieve(url, file_path)
 
 
 def set_wallpaper(image_path):
     """Set the desktop wallpaper to the image specified."""
     logger.info('Setting wallpaper...')
+    logger.debug(f'image_path = {image_path}')
+    logger.debug(f'sys.platform = {sys.platform}')
     if sys.platform == 'win32':
-        ctypes.windll.user32.SystemParametersInfoA(20, 0, image_path, 3)
+        SPI_SETDESKTOPWALLPAPER = 20
+        SPIF_SENDCHANGE = 2
+        # Apparently SPIF_SENDWININICHANGE is aliased to SPIF_SENDCHANGE
+        # SPIF_SENDWININICHANGE = 3
+        ctypes.windll.user32.SystemParametersInfoW(
+            SPI_SETDESKTOPWALLPAPER, 0, image_path, SPIF_SENDCHANGE)
     elif sys.platform == 'linux':
         subprocess.call(
             'gsettings set org.gnome.desktop.background picture-uri '
-            'file://{}'.format(image_path), shell=True)
+            f'file://{image_path}', shell=True)
     elif sys.platform == 'darwin':
         subprocess.call(
-            "tell application 'Finder' to set desktop picture to POSIX "
-            'file {}'.format(image_path), shell=True)
+            'tell application "Finder" to set desktop picture to POSIX '
+            f'file {image_path}', shell=True)
     else:
-        raise NotImplementedError
+        raise NotImplementedError('OS is not yet supported')
 
 
-def update_json(file_path, data):
-    """Update JSON within file_path."""
+def update_data(file_path, data):
+    """Update data within file_path."""
+    filetype = os.path.splitext(file_path)[1]
+    logger.debug(f'filetype = {filetype}')
+    if 'tags' in data:
+        logger.debug(f'data = {data}')
+    else:
+        logger.debug(f'data["id"] = {data["id"]}')
+
     try:
         with open(file_path) as file:
-            previous_data = json.load(file)
-    except FileNotFoundError:
-            logger.error(f'No file at {file_path}')
+            if filetype == '.json':
+                previous_data = json.load(file)
+            elif filetype == '.ini':
+                previous_data = configparser.ConfigParser()
+                previous_data.read(file)
+            else:
+                raise ValueError('Not a compatible filetype')
+
+            if 'tags' in data:
+                logger.debug(f'(update) previous_data = {previous_data}')
+            else:
+                logger.debug(f'(update) previous_data["id"] = '
+                             f'{previous_data["id"]}')
+    except (FileNotFoundError, json.JSONDecodeError):
+            logger.error(f'Empty or missing file at {file_path}')
             previous_data = {}
+
     if data != previous_data:
         with open(file_path, 'w') as file:
-            json.dump(data, file)
+            if filetype == '.json':
+                json.dump(data, file, indent=4, separators=(', ', ': '))
+            elif filetype == '.ini':
+                previous_data.write(file)
 
 
-def init_parser():
+def init_parser(defaults):
     """Return an ArgumentParser with the required arguments."""
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest='subcommand')
@@ -120,18 +170,21 @@ def init_parser():
         'tags', nargs='*',
         help='a space-delimited list of tags the image must match')
     subparser_set.add_argument(
-        '-i', '--imageboard', default='https://danbooru.donmai.us',
-        help='a URL to source images from (default: https://danbooru.donmai.us')
+        '-i', '--imageboard', default=defaults['imageboard'],
+        help=f'a URL to source images from (default: {defaults["imageboard"]})')
     subparser_set.add_argument(
-        '-r', '--retries', type=int, default=2,
-        help='the number of times to retry getting the image (default: 2)')
+        '-r', '--retries', type=int, default=int(defaults['retries']),
+        help='the number of times to retry getting the image (default: '
+        f'{defaults["retries"]})')
     subparser_set.add_argument(
-        '-s', '--size', type=float, default=0.0,
+        '-s', '--size', type=float, default=float(defaults['size']),
         help='the minimum relative size of the image in relation to the '
-        'screen (default: 0.0)')
+        f'screen (default: {defaults["size"]})')
     subparser_set.add_argument(
-        '-n', '--next', action='store_true', default=False,
-        help='set the wallpaper to another image from the previous settings')
+        '-n', '--next', action='store_true',
+        default=defaults.getboolean('next'),
+        help='get the next wallpaper from the previous settings '
+        '(which can be overloaded)')
     subparser_list = subparsers.add_parser(
         'list', help='list information about the current wallpaper')
     subparser_list.add_argument(
@@ -141,59 +194,78 @@ def init_parser():
             'character',
             'copyright',
             'general',
-        ], default=[
-            'all',
-        ], help='the list to list')
+        ], default=[element.strip() for element in defaults['list'].split(',')],
+        help=f'the list to list (default: {defaults["list"]})')
     parser.add_argument(
-        '-d', '--duration', type=int, choices=range(1, 25), default=24,
-        metavar='{1 ... 24}',
-        help='the duration of the wallpaper in hours (default: 24)')
+        '-d', '--duration', type=int, choices=range(1, 25),
+        default=int(defaults['duration']), metavar='{1 ... 24}',
+        help='the duration of the wallpaper in hours (default: '
+        f'{defaults["duration"]})')
     group_verbosity = parser.add_mutually_exclusive_group()
     group_verbosity.add_argument(
-        '-v', '--verbose', action='store_true', default=False,
-        help='increase verbosity')
+        '-v', '--verbose', action='store_true',
+        default=defaults.getboolean('verbose'), help='increase verbosity')
     group_verbosity.add_argument(
-        '-q', '--quiet', action='store_true', default=False,
-        help='decrease verbosity')
+        '-q', '--quiet', action='store_true',
+        default=defaults.getboolean('quiet'), help='decrease verbosity')
 
     return parser
 
 
-def main():
-    """Set the wallpaper and schedule it to change."""
-    script_path = os.path.realpath(__file__)
-    this_directory = os.path.dirname(script_path)
-    config_path = os.path.join(this_directory, 'config.json')
-    data_path = os.path.join(this_directory, 'data.json')
-    cron_path = os.path.join(this_directory, 'schedule.tab')
+def init_config(path=config_path):
+    config_parser = configparser.ConfigParser()
+    with open(path) as config_file:
+        config_parser.read(config_file)
+    if not config_parser['DEFAULT']:
+        config_parser['DEFAULT'] = {
+            'imageboard': 'https://danbooru.donmai.us',
+            'retries': 2,
+            'size': 0.0,
+            'next': False,
+            'list': 'all',
+            'duration': 24,
+            'verbose': False,
+            'quiet': False
+        }
+        with open(path, 'w') as config_file:
+            config_parser.write(config_file)
+    return config_parser
 
-    parser = init_parser()
-    args = vars(parser.parse_args())
+
+def main(argv=sys.argv[1:]):
+    """Set the wallpaper and schedule it to change."""
+    config_parser = init_config()
+    default_args = config_parser['DEFAULT']
+    parser = init_parser(default_args)
+    args = vars(parser.parse_args(argv))
     if len(sys.argv) == 1:
         parser.parse_args(['--help'])
     # Parse args
     if args['verbose']:
-        logger.setLevel(logging.DEBUG)
+        terminal_handler.setLevel(logging.DEBUG)
     elif args['quiet']:
-        logger.setLevel(logging.CRITICAL)
+        terminal_handler.setLevel(logging.CRITICAL)
     # Nothing is logged to the screen until level is set
     logger.debug(f'args = {args}')
 
-    if 'next' in args:
-        try:
-            with open(config_path) as config_file:
-                config = json.load(config_file)
-                logger.debug(f'config = {config}')
-        except FileNotFoundError:
-            raise ValueError(
-                'No previously set tags. Please set some tags before '
-                'requesting the next wallpaper') from None
-        for key in config:
-            if key not in args:
-                args[key] = config[key]
-        # Falls through
+    if args['subcommand'] == 'set':
+        if args['next']:
+            logger.debug('--next called')
+            try:
+                with open(config_path) as config_file:
+                    # TODO: config -> config_parser, no try-except, config['args']
+                    config = json.load(config_file)
+                    logger.debug(f'config = {config}')
+            except (FileNotFoundError, json.JSONDecodeError) as original_error:
+                raise ValueError(
+                    'No previously set tags. Please set some tags before '
+                    'requesting the next wallpaper') from original_error
+            for key in config:
+                logger.debug(f'key = {key}')
+                if key not in args:
+                    args[key] = config[key]
+            logger.debug(f'args = {args}')
 
-    if args['subcommand'] == 'set' or 'next' in args:
         imageboard = args['imageboard']
         data = get_image(
             args['tags'], imageboard, attempts=args['retries'] + 1,
@@ -202,11 +274,12 @@ def main():
         url = f'{imageboard}{partial_url}'
         file_extension = data['file_ext']
         filename = f'wallpaper.{file_extension}'
-        path = download(url, filename)
+        path = os.path.join(this_directory, filename)
+        download(url, path)
         set_wallpaper(path)
 
-        update_json(data_path, data)
-        update_json(config_path, args)
+        update_data(data_path, data)
+        update_data(config_path, args)
 
     if args['subcommand'] == 'list':
         if 'all' in args['list']:
@@ -221,10 +294,10 @@ def main():
             with open(data_path) as data_file:
                 data = json.load(data_file)
                 logger.debug(f'data = {data}')
-        except FileNotFoundError:
+        except (FileNotFoundError, json.JSONDecodeError) as original_error:
             raise ValueError(
                 'Nothing to list. Please set some tags before listing data '
-                'about the nonexistent tagged image') from None
+                'about the nonexistent tagged image') from original_error
 
         for list_ in args['list']:
             list_name = list_.capitalize()
@@ -233,12 +306,14 @@ def main():
 
     try:
         with open(config_path) as config_file:
-            previous_args = json.load(config_file)
+            previous_args = config_parser.read(config_file)
+            logger.debug(f'(sched) previous_args = {previous_args}')
     except FileNotFoundError:
-        logger.error('No config.json file')
+        logger.error('No config.ini file')
         pass
     else:
-        if args['duration'] != previous_args['duration']:
+        # XXX: remove `or True`/`and False`
+        if args['duration'] != previous_args['duration'] and False:
             logger.info('Scheduling next wallpaper change...')
             tab = crontab.CronTab(tabfile=cron_path)
             tab.remove_all()
@@ -249,6 +324,7 @@ def main():
             else:
                 cron_job.every(args['duration']).hours()
             tab.write()
+            logger.debug(f'cron_job = {tab.render()}')
             # user = getpass.getuser()
             # cron_path = f'/var/spool/cron/crontabs/{user}'
             # try:
