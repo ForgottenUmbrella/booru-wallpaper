@@ -3,5 +3,7 @@ __pycache__
 *.json
 *.log
 *.html
-wallpaper.jpg
-wallpaper.png
+wallpaper.*
+*~
+.ropeproject
+tags
