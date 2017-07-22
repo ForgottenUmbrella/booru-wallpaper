@@ -175,8 +175,10 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
     for attempt in range(attempts):
         logger.info(f"Attempt {attempt}: Getting image...")
         data = get_image_metadata(tags, imageboard)
-        good_fit = (data["image_height"] >= screen_height * scale and
-                    data["image_width"] >= screen_width * scale)
+        good_fit = (
+            data["image_height"] >= screen_height * scale and
+            data["image_width"] >= screen_width * scale
+            )
         if good_fit:
             return data
     raise ValueError("No images were large enough.")
@@ -223,7 +225,6 @@ def set_mac_wallpaper(image_path):
         )
 
 
-
 def set_wallpaper(image_path):
     """Set the desktop wallpaper, regardless of operating system.
 
@@ -263,7 +264,7 @@ class XDConfigParser(configparser.ConfigParser):
             self._create_defaults()
         logger.debug("config_parser['DEFAULT']:")
         for key, value in self["DEFAULT"].items():
-            logger.debug(f"{key} = {expr(value)}")
+            logger.debug(f"{key} = {repr(value)}")
 
     def _create_defaults(self):
         self["DEFAULT"] = {
