@@ -359,12 +359,12 @@ def get_previous_args(prev_config_path):
     Raises:
         ValueError: If no previous arguments are available.
     """
-    try:
-        with open(prev_config_path) as config_file:
-            previous_args = json.load(config_file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.error("No prev_config file.")
-        raise ValueError("No previous arguments.")
+    # try:
+    with open(prev_config_path) as config_file:
+        previous_args = json.load(config_file)
+    # except (FileNotFoundError, json.JSONDecodeError):
+    #     logger.error("No prev_config file.")
+    #     raise ValueError("No previous arguments.")
     return previous_args
 
 
@@ -373,27 +373,29 @@ def set_booru_wallpaper(args, image_data_path):
     prev_config_path = os.path.join(data_dir, "prev_config.json")
     if args["next"]:
         logger.debug("--next called")
-        try:
-            args = get_previous_args(prev_config_path)
-        except ValueError as original_error:
-            logger.error(original_error)
-            raise ValueError(
-                "Please set some arguments before getting the next"
-                "wallpaper."
-                )
+        # try:
+        args = get_previous_args(prev_config_path)
+        # except ValueError as original_error:
+        #     logger.error(original_error)
+        #     raise ValueError(
+        #         "Please set some arguments before getting the next"
+        #         "wallpaper."
+        #         )
     imageboard = args["imageboard"]
     max_attempts = args["retries"] + 1
     data = get_valid_image_metadata(
-        args["tags"], imageboard, attempts=max_attempts,
-        scale=args["scale"]
+        args["tags"], imageboard, attempts=max_attempts, scale=args["scale"]
         )
+
     partial_url = data["file_url"]
     url = imageboard + partial_url
     file_extension = data["file_ext"]
     filename = f"wallpaper.{file_extension}"
     path = os.path.join(root_dir, "wallpapers", filename)
     download(url, path)
+
     set_wallpaper(path)
+
     with open(image_data_path, "w") as data_file:
         json.dump(data, data_file, indent=4, separators=(", ", ": "))
     with open(prev_config_path, "w") as config_file:
@@ -409,20 +411,19 @@ def list_wallpaper_info(args, image_data_path):
             "copyright",
             "general",
         ]
-    try:
-        with open(image_data_path) as data_file:
-            data = json.load(data_file)
-            logger.debug(f"(list) data = {data}")
-    except FileNotFoundError:
-        raise ValueError(
-            "There is no wallpaper to list data about. "
-            "Please set some tags."
-            ) from None
+    # try:
+    #     with open(image_data_path) as data_file:
+        data = json.load(data_file)
+        logger.debug(f"(list) data = {data}")
+    # except FileNotFoundError:
+    #     raise ValueError(
+    #         "There is no wallpaper to list data about. "
+    #         "Please set some tags."
+    #         ) from None
     for listed_data in args["list"]:
         list_name = listed_data.capitalize()
         key = f"tag_string_{listed_data}"
         gram_list = gram_join(data[key])
-        # Functionality, therefore it is printed instead of logged.
         print(f"{list_name}: {gram_list}")
 
 
