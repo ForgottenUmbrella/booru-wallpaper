@@ -13,10 +13,7 @@ import configparser
 import json
 import ctypes
 import logging
-try:
-    import tkinter
-except ImportError:
-    print("Please install tk.")
+import tkinter
 
 # TODO: Undo comment import
 # import crontab
@@ -28,9 +25,27 @@ data_dir = os.path.join(root_dir, "data")
 logger = logging.getLogger(__name__)
 
 
-class RequestError(Exception):
-    """Error raised for unsuccessful urllib.requests."""
-    pass
+def init_logger(verbose, quiet):
+    """Initialise the global logger's properties."""
+    logger.setLevel(logging.DEBUG)
+    log_path = os.path.join(root_dir, "log.log")
+    debug_handler = logging.FileHandler(log_path, mode="w")
+    debug_handler.setLevel(logging.DEBUG)
+    debug_formatter = logging.Formatter(
+        "{asctime} - {name}:{levelname}: {message}", style="{"
+        )
+    debug_handler.setFormatter(debug_formatter)
+    terminal_handler = logging.StreamHandler()
+    if verbose:
+        terminal_handler.setLevel(logging.DEBUG)
+    elif quiet:
+        terminal_handler.setLevel(logging.CRITICAL)
+    else:
+        terminal_handler.setLevel(logging.INFO)
+    terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
+    terminal_handler.setFormatter(terminal_formatter)
+    logger.addHandler(debug_handler)
+    logger.addHandler(terminal_handler)
 
 
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
@@ -58,29 +73,7 @@ def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
     return gram_string
 
 
-def init_logger(verbose, quiet):
-    """Initialise the global logger's properties."""
-    logger.setLevel(logging.DEBUG)
-    log_path = os.path.join(root_dir, "log.log")
-    debug_handler = logging.FileHandler(log_path, mode="w")
-    debug_handler.setLevel(logging.DEBUG)
-    debug_formatter = logging.Formatter(
-        "{asctime} - {name}:{levelname}: {message}", style="{")
-    debug_handler.setFormatter(debug_formatter)
-    terminal_handler = logging.StreamHandler()
-    if verbose:
-        terminal_handler.setLevel(logging.DEBUG)
-    elif quiet:
-        terminal_handler.setLevel(logging.CRITICAL)
-    else:
-        terminal_handler.setLevel(logging.INFO)
-    terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
-    terminal_handler.setFormatter(terminal_formatter)
-    logger.addHandler(debug_handler)
-    logger.addHandler(terminal_handler)
-
-
-def get_screen_dimensions():
+def screen_dimensions():
     """Return a tuple of the screen height and width."""
     root = tkinter.Tk()
     height = root.winfo_screenheight()
@@ -90,7 +83,7 @@ def get_screen_dimensions():
     return dimensions
 
 
-def get_json_as_dict(url):
+def get_json(url):
     """Make a GET request and return the JSON data as a dict.
 
     Args:
@@ -99,9 +92,9 @@ def get_json_as_dict(url):
     Returns:
         dict: A JSON object from `url` decoded to a Python dictionary.
 
-    Raises:
-        RequestError: If the request is unsuccessful.
-        ValueError: If no JSON data is available from `url`.
+    # Raises:
+    #     RequestError: If the request is unsuccessful.
+    #     ValueError: If no JSON data is available from `url`.
     """
     SUCCESS = range(100, 400)
     logger.debug(f"GET url = {url}")
@@ -112,15 +105,15 @@ def get_json_as_dict(url):
         if request_succeeded:
             raw_data = request.read()
             decoded_data = raw_data.decode("utf-8")
-            try:
-                json_data = json.loads(decoded_data)
-            except json.JSONDecodeError as original_error:
-                logger.error(original_error)
-                raise ValueError(f"{url} does not have JSON data.")
-        else:
-            raise RequestError(f"Request returned code {status}.")
-    if not json_data:
-        raise ValueError(f"No data from {url}.")
+            # try:
+            json_data = json.loads(decoded_data)
+            # except json.JSONDecodeError as original_error:
+            #     logger.error(original_error)
+            #     raise ValueError(f"{url} does not have JSON data.")
+        # else:
+            # raise RequestError(f"Request returned code {status}.")
+    # if not json_data:
+        # raise ValueError(f"No data from {url}.")
     logger.debug(f"json_data = {json_data}")
     return json_data
 
@@ -135,29 +128,29 @@ def get_image_metadata(tags, imageboard):
     Returns:
         dict: Data stored about the image from the imageboard.
 
-    Raises:
-        ValueError: If there are too many tags, or there were no images
-            tagged with them all.
-        OSError: If there was no internet connection available.
+    # Raises:
+    #     ValueError: If there are too many tags, or there were no images
+    #         tagged with them all.
+    #     OSError: If there was no internet connection available.
     """
     posts = f"{imageboard}/posts.json"
     query = urllib.parse.urlencode({
         "limit": 1,
         "tags": " ".join(tags),
         "random": "true",
-    })
+        })
     post = f"{posts}?{query}"
-    try:
-        data = get_json_as_dict(post)[0]
-    except urllib.error.HTTPError as original_error:
-        logger.error(original_error)
-        raise ValueError("Too many tags.") from None
-    except urllib.error.URLError as original_error:
-        logger.error(original_error)
-        raise OSError("No internet connection.") from None
-    except ValueError as original_error:
-        logger.error(original_error)
-        raise ValueError("Invalid/conflicting tags.") from None
+    # try:
+    data = get_json(post)[0]
+    # except urllib.error.HTTPError as original_error:
+    #     logger.error(original_error)
+    #     raise ValueError("Too many tags.") from None
+    # except urllib.error.URLError as original_error:
+    #     logger.error(original_error)
+    #     raise OSError("No internet connection.") from None
+    # except ValueError as original_error:
+    #     logger.error(original_error)
+    #     raise ValueError("Invalid/conflicting tags.") from None
     return data
 
 
@@ -178,7 +171,7 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
     Raises:
         ValueError: If none of the images fetched meet all requirements.
     """
-    (screen_height, screen_width) = get_screen_dimensions()
+    (screen_height, screen_width) = screen_dimensions()
     for attempt in range(attempts):
         logger.info(f"Attempt {attempt}: Getting image...")
         data = get_image_metadata(tags, imageboard)
@@ -207,7 +200,8 @@ def set_linux_wallpaper(image_path):
     # TODO: Work on all desktop environments and window managers.
     subprocess.call(
         "gsettings set org.gnome.desktop.background picture-uri "
-        f"file://{image_path}", shell=True)
+        f"file://{image_path}", shell=True
+        )
 
 
 def set_windows_wallpaper(image_path):
@@ -217,14 +211,16 @@ def set_windows_wallpaper(image_path):
     IRRELEVANT_PARAM = 0
     ctypes.windll.user32.SystemParametersInfoW(
         SPI_SETDESKTOPWALLPAPER, IRRELEVANT_PARAM, image_path,
-        SPIF_SENDCHANGE)
+        SPIF_SENDCHANGE
+        )
 
 
 def set_mac_wallpaper(image_path):
     """Set the desktop wallpaper on macOS."""
     subprocess.call(
         "tell application 'Finder' to set desktop picture to POSIX "
-        f"file {image_path}", shell=True)
+        f"file {image_path}", shell=True
+        )
 
 
 
@@ -253,22 +249,53 @@ def set_wallpaper(image_path):
         raise NotImplementedError("OS is not yet supported.")
 
 
-def create_defaults(path):
-    """Create an .ini file with defaults and return the ConfigParser."""
-    config_parser = configparser.ConfigParser()
-    config_parser["DEFAULT"] = {
-        "imageboard": "https://danbooru.donmai.us",
-        "retries": 2,
-        "scale": 0.0,
-        "next": False,
-        "list": "all",
-        "duration": 24,
-        "verbose": False,
-        "quiet": False,
-    }
-    with open(path, "w") as defaults_file:
-        config_parser.write(defaults_file)
-    return config_parser
+class XDConfigParser(configparser.ConfigParser):
+    """ConfigParser for this program."""
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+        try:
+            with open(self.path) as defaults_file:
+                self.read_file(defaults_file)
+        except FileNotFoundError:
+            logger.error("No defaults.ini file.")
+        if not self["DEFAULT"]:
+            self._create_defaults()
+        logger.debug("config_parser['DEFAULT']:")
+        for key, value in self["DEFAULT"].items():
+            logger.debug(f"{key} = {expr(value)}")
+
+    def _create_defaults(self):
+        self["DEFAULT"] = {
+            "imageboard": "https://danbooru.donmai.us",
+            "retries": 2,
+            "scale": 0.0,
+            "next": False,
+            "list": "all",
+            "duration": 24,
+            "verbose": False,
+            "quiet": False,
+        }
+        with open(self.path, "w") as defaults_file:
+            self.write(defaults_file)
+
+
+# def create_defaults(path):
+#     """Create an .ini file with defaults and return the ConfigParser."""
+#     config_parser = configparser.ConfigParser()
+#     config_parser["DEFAULT"] = {
+#         "imageboard": "https://danbooru.donmai.us",
+#         "retries": 2,
+#         "scale": 0.0,
+#         "next": False,
+#         "list": "all",
+#         "duration": 24,
+#         "verbose": False,
+#         "quiet": False,
+#     }
+#     with open(path, "w") as defaults_file:
+#         config_parser.write(defaults_file)
+#     return config_parser
 
 
 def init_defaults(path):
@@ -291,31 +318,38 @@ def init_argparser(defaults):
     """Return a set-up ArgumentParser with appropriate defaults."""
     argparser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
-        "tagged image from a booru")
+        "tagged image from a booru"
+        )
     subparsers = argparser.add_subparsers(dest="subcommand")
 
     subparser_set = subparsers.add_parser("set", help="set the wallpaper")
     subparser_set.add_argument(
         "tags", nargs="*",
-        help="a space-delimited list of tags the image must match")
+        help="a space-delimited list of tags the image must match"
+        )
     subparser_set.add_argument(
         "-i", "--imageboard", default=defaults["imageboard"],
-        help="a URL to source images from (default: %(default)s)")
+        help="a URL to source images from (default: %(default)s)"
+        )
     subparser_set.add_argument(
         "-r", "--retries", type=int, default=int(defaults["retries"]),
         help="the number of times to retry getting the image "
-        "(default: %(default)s)")
+        "(default: %(default)s)"
+        )
     subparser_set.add_argument(
         "-s", "--scale", type=float, default=float(defaults["scale"]),
         help="the minimum relative size of the image to the screen "
-        "(default: %(default)s)")
+        "(default: %(default)s)"
+        )
     subparser_set.add_argument(
         "-n", "--next", action="store_true",
         default=defaults.getboolean("next"),
-        help="get the next wallpaper using the previous settings")
+        help="get the next wallpaper using the previous settings"
+        )
 
     subparser_list = subparsers.add_parser(
-        "list", help="list information about the current wallpaper")
+        "list", help="list information about the current wallpaper"
+        )
     subparser_list.add_argument(
         "list", nargs="*", choices=[
             "all",
@@ -326,20 +360,24 @@ def init_argparser(defaults):
             # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
             # ], default=[element.strip() for element in defaults["list"].split(",")],
         ], default="all",
-        help="the list to list (default: %(default)s)")
+        help="the list to list (default: %(default)s)"
+        )
 
     argparser.add_argument(
         "-d", "--duration", type=int, choices=range(1, 25),
         default=int(defaults["duration"]), metavar="{1 ... 24}",
-        help="the duration of the wallpaper in hours (default: %(default)s)")
+        help="the duration of the wallpaper in hours (default: %(default)s)"
+        )
 
     group_verbosity = argparser.add_mutually_exclusive_group()
     group_verbosity.add_argument(
         "-v", "--verbose", action="store_true",
-        default=defaults.getboolean("verbose"), help="increase verbosity")
+        default=defaults.getboolean("verbose"), help="increase verbosity"
+        )
     group_verbosity.add_argument(
         "-q", "--quiet", action="store_true",
-        default=defaults.getboolean("quiet"), help="decrease verbosity")
+        default=defaults.getboolean("quiet"), help="decrease verbosity"
+        )
 
     return argparser
 
@@ -374,12 +412,14 @@ def set_booru_wallpaper(args, image_data_path):
             logger.error(original_error)
             raise ValueError(
                 "Please set some arguments before getting the next"
-                "wallpaper.")
+                "wallpaper."
+                )
     imageboard = args["imageboard"]
     max_attempts = args["retries"] + 1
     data = get_valid_image_metadata(
         args["tags"], imageboard, attempts=max_attempts,
-        scale=args["scale"])
+        scale=args["scale"]
+        )
     partial_url = data["file_url"]
     url = imageboard + partial_url
     file_extension = data["file_ext"]
@@ -409,7 +449,8 @@ def list_wallpaper_info(args, image_data_path):
     except FileNotFoundError:
         raise ValueError(
             "There is no wallpaper to list data about. "
-            "Please set some tags.") from None
+            "Please set some tags."
+            ) from None
     for listed_data in args["list"]:
         list_name = listed_data.capitalize()
         key = f"tag_string_{listed_data}"
@@ -427,8 +468,6 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    if argv is None:
-        argv = sys.argv[1:]
     defaults_path = os.path.join(data_dir, "defaults.ini")
     default_args = init_defaults(defaults_path)
     argparser = init_argparser(default_args)
