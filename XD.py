@@ -263,7 +263,7 @@ class XDConfigParser(configparser.ConfigParser):
             self._create_defaults()
         logger.debug("config_parser['DEFAULT']:")
         for key, value in self["DEFAULT"].items():
-            logger.debug(f"{key} = {expr(value)}")
+            logger.debug(f"{key} = {repr(value)}")
 
     def _create_defaults(self):
         self["DEFAULT"] = {
@@ -298,20 +298,20 @@ class XDConfigParser(configparser.ConfigParser):
 #     return config_parser
 
 
-def init_defaults(path):
-    """Return the DEFAULT section of an .ini file."""
-    config_parser = configparser.ConfigParser()
-    try:
-        with open(path) as defaults_file:
-            config_parser.read_file(defaults_file)
-    except FileNotFoundError:
-        logger.error("No defaults.ini file.")
-    if not config_parser["DEFAULT"]:
-        config_parser = create_defaults(path)
-    logger.debug("config_parser['DEFAULT']:")
-    for key, value in config_parser["DEFAULT"].items():
-        logger.debug(f"{key} = '{value}'")
-    return config_parser["DEFAULT"]
+# def init_defaults(path):
+#     """Return the DEFAULT section of an .ini file."""
+#     config_parser = configparser.ConfigParser()
+#     try:
+#         with open(path) as defaults_file:
+#             config_parser.read_file(defaults_file)
+#     except FileNotFoundError:
+#         logger.error("No defaults.ini file.")
+#     if not config_parser["DEFAULT"]:
+#         config_parser = create_defaults(path)
+#     logger.debug("config_parser['DEFAULT']:")
+#     for key, value in config_parser["DEFAULT"].items():
+#         logger.debug(f"{key} = '{value}'")
+#     return config_parser["DEFAULT"]
 
 
 def init_argparser(defaults):
@@ -469,7 +469,7 @@ def main(argv=None):
         ValueError: If the user provided an invalid command.
     """
     defaults_path = os.path.join(data_dir, "defaults.ini")
-    default_args = init_defaults(defaults_path)
+    default_args = XDConfigParser(defaults_path)["DEFAULT"]
     argparser = init_argparser(default_args)
     args = vars(argparser.parse_args(argv))
     image_data_path = os.path.join(data_dir, "image_data.json")
