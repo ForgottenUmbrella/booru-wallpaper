@@ -281,106 +281,72 @@ class XDConfigParser(configparser.ConfigParser):
             self.write(defaults_file)
 
 
-# def create_defaults(path):
-#     """Create an .ini file with defaults and return the ConfigParser."""
-#     config_parser = configparser.ConfigParser()
-#     config_parser["DEFAULT"] = {
-#         "imageboard": "https://danbooru.donmai.us",
-#         "retries": 2,
-#         "scale": 0.0,
-#         "next": False,
-#         "list": "all",
-#         "duration": 24,
-#         "verbose": False,
-#         "quiet": False,
-#     }
-#     with open(path, "w") as defaults_file:
-#         config_parser.write(defaults_file)
-#     return config_parser
+class XDArgParser(argparse.ArgumentParser):
+    def __init__(self, defaults):
+        """Return a set-up ArgumentParser with appropriate defaults."""
+        super().__init__(
+            description="Utility to regularly set the wallpaper to a random "
+            "tagged image from a booru"
+            )
+        subparsers = self.add_subparsers(dest="subcommand")
 
+        subparser_set = subparsers.add_parser("set", help="set the wallpaper")
+        subparser_set.add_argument(
+            "tags", nargs="*",
+            help="a space-delimited list of tags the image must match"
+            )
+        subparser_set.add_argument(
+            "-i", "--imageboard", default=defaults["imageboard"],
+            help="a URL to source images from (default: %(default)s)"
+            )
+        subparser_set.add_argument(
+            "-r", "--retries", type=int, default=int(defaults["retries"]),
+            help="the number of times to retry getting the image "
+            "(default: %(default)s)"
+            )
+        subparser_set.add_argument(
+            "-s", "--scale", type=float, default=float(defaults["scale"]),
+            help="the minimum relative size of the image to the screen "
+            "(default: %(default)s)"
+            )
+        subparser_set.add_argument(
+            "-n", "--next", action="store_true",
+            default=defaults.getboolean("next"),
+            help="get the next wallpaper using the previous settings"
+            )
 
-def init_defaults(path):
-    """Return the DEFAULT section of an .ini file."""
-    config_parser = configparser.ConfigParser()
-    try:
-        with open(path) as defaults_file:
-            config_parser.read_file(defaults_file)
-    except FileNotFoundError:
-        logger.error("No defaults.ini file.")
-    if not config_parser["DEFAULT"]:
-        config_parser = create_defaults(path)
-    logger.debug("config_parser['DEFAULT']:")
-    for key, value in config_parser["DEFAULT"].items():
-        logger.debug(f"{key} = '{value}'")
-    return config_parser["DEFAULT"]
+        subparser_list = subparsers.add_parser(
+            "list", help="list information about the current wallpaper"
+            )
+        subparser_list.add_argument(
+            "list", nargs="*", choices=[
+                "all",
+                "artist",
+                "character",
+                "copyright",
+                "general",
+                # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
+                # ], default=[element.strip() for element in defaults["list"].split(",")],
+            ], default="all",
+            help="the list to list (default: %(default)s)"
+            )
 
+        self.add_argument(
+            "-d", "--duration", type=int, choices=range(1, 25),
+            default=int(defaults["duration"]), metavar="{1 ... 24}",
+            help="the duration of the wallpaper in hours "
+            "(default: %(default)s)"
+            )
 
-def init_argparser(defaults):
-    """Return a set-up ArgumentParser with appropriate defaults."""
-    argparser = argparse.ArgumentParser(
-        description="Utility to regularly set the wallpaper to a random "
-        "tagged image from a booru"
-        )
-    subparsers = argparser.add_subparsers(dest="subcommand")
-
-    subparser_set = subparsers.add_parser("set", help="set the wallpaper")
-    subparser_set.add_argument(
-        "tags", nargs="*",
-        help="a space-delimited list of tags the image must match"
-        )
-    subparser_set.add_argument(
-        "-i", "--imageboard", default=defaults["imageboard"],
-        help="a URL to source images from (default: %(default)s)"
-        )
-    subparser_set.add_argument(
-        "-r", "--retries", type=int, default=int(defaults["retries"]),
-        help="the number of times to retry getting the image "
-        "(default: %(default)s)"
-        )
-    subparser_set.add_argument(
-        "-s", "--scale", type=float, default=float(defaults["scale"]),
-        help="the minimum relative size of the image to the screen "
-        "(default: %(default)s)"
-        )
-    subparser_set.add_argument(
-        "-n", "--next", action="store_true",
-        default=defaults.getboolean("next"),
-        help="get the next wallpaper using the previous settings"
-        )
-
-    subparser_list = subparsers.add_parser(
-        "list", help="list information about the current wallpaper"
-        )
-    subparser_list.add_argument(
-        "list", nargs="*", choices=[
-            "all",
-            "artist",
-            "character",
-            "copyright",
-            "general",
-            # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
-            # ], default=[element.strip() for element in defaults["list"].split(",")],
-        ], default="all",
-        help="the list to list (default: %(default)s)"
-        )
-
-    argparser.add_argument(
-        "-d", "--duration", type=int, choices=range(1, 25),
-        default=int(defaults["duration"]), metavar="{1 ... 24}",
-        help="the duration of the wallpaper in hours (default: %(default)s)"
-        )
-
-    group_verbosity = argparser.add_mutually_exclusive_group()
-    group_verbosity.add_argument(
-        "-v", "--verbose", action="store_true",
-        default=defaults.getboolean("verbose"), help="increase verbosity"
-        )
-    group_verbosity.add_argument(
-        "-q", "--quiet", action="store_true",
-        default=defaults.getboolean("quiet"), help="decrease verbosity"
-        )
-
-    return argparser
+        group_verbosity = self.add_mutually_exclusive_group()
+        group_verbosity.add_argument(
+            "-v", "--verbose", action="store_true",
+            default=defaults.getboolean("verbose"), help="increase verbosity"
+            )
+        group_verbosity.add_argument(
+            "-q", "--quiet", action="store_true",
+            default=defaults.getboolean("quiet"), help="decrease verbosity"
+            )
 
 
 def get_previous_args(prev_config_path):
@@ -470,8 +436,8 @@ def main(argv=None):
         ValueError: If the user provided an invalid command.
     """
     defaults_path = os.path.join(data_dir, "defaults.ini")
-    default_args = init_defaults(defaults_path)
-    argparser = init_argparser(default_args)
+    default_args = XDConfigParser(defaults_path)["DEFAULT"]
+    argparser = XDArgParser(default_args)
     args = vars(argparser.parse_args(argv))
     image_data_path = os.path.join(data_dir, "image_data.json")
 
