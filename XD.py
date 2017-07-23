@@ -350,7 +350,6 @@ def init_argparser(defaults):
         default=int(defaults["duration"]), metavar="{1 ... 24}",
         help="the duration of the wallpaper in hours (default: %(default)s)"
         )
-
     argparser.add_argument(
         "-v", "--verbose", action="store_true",
         default=defaults.getboolean("verbose"), help="increase verbosity"
@@ -449,9 +448,10 @@ def main(argv=None):
     logger.debug(f"argv = {argv}")
     logger.debug(f"args = {args}")
 
-    if not argv:
-        argparser.parse_args(["--help"])
-        # Implicit return due to help flag.
+    no_args = (len(sys.argv) == 1)
+    if no_args:
+        argparser.print_help()
+        sys.exit(1)
 
     if args["subcommand"] == "set":
         set_booru_wallpaper(args, image_data_path)
