@@ -102,7 +102,9 @@ def get_json(url):
         succeeded = status in SUCCESS
         if succeeded:
             raw = request.read()
-            decoded = raw.decode("utf-8")
+            encoding = request.headers.get_content_charset()
+            logger.debug(f"encoding = {encoding}")
+            decoded = raw.decode(encoding)
             # try:
             json_data = json.loads(decoded)
             # except json.JSONDecodeError as original_error:
