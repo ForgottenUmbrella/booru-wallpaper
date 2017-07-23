@@ -173,7 +173,9 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
     """
     (screen_height, screen_width) = screen_dimensions()
     for attempt in range(attempts):
-        print(f"Attempt {attempt}: Getting image...")
+        # `attempt` is zero-based, but humans aren't.
+        real_attempt = attempt + 1
+        print(f"Attempt {real_attempt}: Getting image...")
         data = get_image_metadata(tags, imageboard)
         good_fit = (
             data["image_height"] >= screen_height * scale and
