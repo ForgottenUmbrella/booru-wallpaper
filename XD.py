@@ -20,26 +20,24 @@ import tkinter
 
 script_path = os.path.realpath(__file__)
 root_dir = os.path.dirname(script_path)
-data_dir = os.path.join(root_dir, "data")
+image_data_dir = os.path.join(root_dir, "data")
 
 logger = logging.getLogger(__name__)
 
 
-def init_logger(verbose, quiet):
+def init_logger(verbose):
     """Initialise the global logger's properties."""
     logger.setLevel(logging.DEBUG)
     log_path = os.path.join(root_dir, "log.log")
     debug_handler = logging.FileHandler(log_path, mode="w")
     debug_handler.setLevel(logging.DEBUG)
     debug_formatter = logging.Formatter(
-        "{asctime} - {name}:{levelname}: {message}", style="{"
+        "{name}:{levelname}: {message}", style="{"
         )
     debug_handler.setFormatter(debug_formatter)
     terminal_handler = logging.StreamHandler()
     if verbose:
         terminal_handler.setLevel(logging.DEBUG)
-    elif quiet:
-        terminal_handler.setLevel(logging.CRITICAL)
     else:
         terminal_handler.setLevel(logging.INFO)
     terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
@@ -101,12 +99,12 @@ def get_json(url):
     with urllib.request.urlopen(url) as request:
         status = request.getcode()
         logger.debug(f"status = {status}")
-        request_succeeded = status in SUCCESS
-        if request_succeeded:
-            raw_data = request.read()
-            decoded_data = raw_data.decode("utf-8")
+        succeeded = status in SUCCESS
+        if succeeded:
+            raw = request.read()
+            decoded = raw.decode("utf-8")
             # try:
-            json_data = json.loads(decoded_data)
+            json_data = json.loads(decoded)
             # except json.JSONDecodeError as original_error:
             #     logger.error(original_error)
             #     raise ValueError(f"{url} does not have JSON data.")
@@ -173,10 +171,12 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
     """
     (screen_height, screen_width) = screen_dimensions()
     for attempt in range(attempts):
-        logger.info(f"Attempt {attempt}: Getting image...")
+        print(f"Attempt {attempt}: Getting image...")
         data = get_image_metadata(tags, imageboard)
-        good_fit = (data["image_height"] >= screen_height * scale and
-                    data["image_width"] >= screen_width * scale)
+        good_fit = (
+            data["image_height"] >= screen_height * scale and
+            data["image_width"] >= screen_width * scale
+            )
         if good_fit:
             return data
     raise ValueError("No images were large enough.")
@@ -184,15 +184,28 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
 
 def download(url, file_path):
     """Store a copy of a file from the internet."""
-    logger.info("Downloading image...")
+    print("Downloading image...")
     urllib.request.urlretrieve(url, file_path)
 
 
-def set_linux_wallpaper(image_path):
+def download_image(tags, imageboard, attempts, scale):
+    """Download an image and return its path and data."""
+    data = get_valid_image_metadata(
+        tags, imageboard, attempts=attempts, scale=scale
+        )
+    url = imageboard + data["file_url"]
+    extension = data["file_ext"]
+    # TODO: Use default name.
+    filename = f"wallpaper.{extension}"
+    path = os.path.join(root_dir, "wallpapers", filename)
+    download(url, path)
+    return path, data
+
+def set_linux_wallpaper(path):
     """Set the desktop wallpaper on GNU/Linux.
 
     Args:
-        image_path (str): Path of image to use as wallpaper.
+        path (str): Path of image to use as wallpaper.
 
     Raises:
         NotImplementedError: If the DE/WM is not yet supported.
@@ -200,51 +213,51 @@ def set_linux_wallpaper(image_path):
     # TODO: Work on all desktop environments and window managers.
     subprocess.call(
         "gsettings set org.gnome.desktop.background picture-uri "
-        f"file://{image_path}", shell=True
+        f"file://{path}", shell=True
         )
 
 
-def set_windows_wallpaper(image_path):
+def set_windows_wallpaper(path):
     """Set the desktop wallpaper on Windows."""
     SPI_SETDESKTOPWALLPAPER = 20
     SPIF_SENDCHANGE = 2
     IRRELEVANT_PARAM = 0
     ctypes.windll.user32.SystemParametersInfoW(
-        SPI_SETDESKTOPWALLPAPER, IRRELEVANT_PARAM, image_path,
+        SPI_SETDESKTOPWALLPAPER, IRRELEVANT_PARAM, path,
         SPIF_SENDCHANGE
         )
 
 
-def set_mac_wallpaper(image_path):
+def set_mac_wallpaper(path):
     """Set the desktop wallpaper on macOS."""
     subprocess.call(
         "tell application 'Finder' to set desktop picture to POSIX "
-        f"file {image_path}", shell=True
+        f"file {path}", shell=True
         )
 
 
-
-def set_wallpaper(image_path):
+def set_wallpaper(path):
     """Set the desktop wallpaper, regardless of operating system.
 
     Args:
-        image_path (str): Path of image to use as wallpaper.
+        path (str): Path of image to use as wallpaper.
 
     Raises:
         NotImplementedError: If the operating system is not yet
             supported.
     """
-    logger.info("Setting wallpaper...")
-    logger.debug(f"sys.platform = {sys.platform}")
+    print("Setting wallpaper...")
+    system = sys.platform
+    logger.debug(f"system = {system}")
     LINUX = "linux"
     WINDOWS = "win32"
     MAC = "darwin"
-    if sys.platform == LINUX:
-        set_linux_wallpaper(image_path)
-    elif sys.platform == WINDOWS:
-        set_windows_wallpaper(image_path)
-    elif sys.platform == MAC:
-        set_mac_wallpaper(image_path)
+    if system == LINUX:
+        set_linux_wallpaper(path)
+    elif system == WINDOWS:
+        set_windows_wallpaper(path)
+    elif system == MAC:
+        set_mac_wallpaper(path)
     else:
         raise NotImplementedError("OS is not yet supported.")
 
@@ -258,7 +271,7 @@ class XDConfigParser(configparser.ConfigParser):
             with open(self.path) as defaults_file:
                 self.read_file(defaults_file)
         except FileNotFoundError:
-            logger.error("No defaults.ini file.")
+            logger.warning("No defaults.ini file.")
         if not self["DEFAULT"]:
             self._create_defaults()
         logger.debug("config_parser['DEFAULT']:")
@@ -274,48 +287,13 @@ class XDConfigParser(configparser.ConfigParser):
             "list": "all",
             "duration": 24,
             "verbose": False,
-            "quiet": False,
         }
         with open(self.path, "w") as defaults_file:
             self.write(defaults_file)
 
 
-# def create_defaults(path):
-#     """Create an .ini file with defaults and return the ConfigParser."""
-#     config_parser = configparser.ConfigParser()
-#     config_parser["DEFAULT"] = {
-#         "imageboard": "https://danbooru.donmai.us",
-#         "retries": 2,
-#         "scale": 0.0,
-#         "next": False,
-#         "list": "all",
-#         "duration": 24,
-#         "verbose": False,
-#         "quiet": False,
-#     }
-#     with open(path, "w") as defaults_file:
-#         config_parser.write(defaults_file)
-#     return config_parser
-
-
-# def init_defaults(path):
-#     """Return the DEFAULT section of an .ini file."""
-#     config_parser = configparser.ConfigParser()
-#     try:
-#         with open(path) as defaults_file:
-#             config_parser.read_file(defaults_file)
-#     except FileNotFoundError:
-#         logger.error("No defaults.ini file.")
-#     if not config_parser["DEFAULT"]:
-#         config_parser = create_defaults(path)
-#     logger.debug("config_parser['DEFAULT']:")
-#     for key, value in config_parser["DEFAULT"].items():
-#         logger.debug(f"{key} = '{value}'")
-#     return config_parser["DEFAULT"]
-
-
 def init_argparser(defaults):
-    """Return a set-up ArgumentParser with appropriate defaults."""
+    """Return an ArgumentParser with appropriate defaults."""
     argparser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru"
@@ -369,67 +347,55 @@ def init_argparser(defaults):
         help="the duration of the wallpaper in hours (default: %(default)s)"
         )
 
-    group_verbosity = argparser.add_mutually_exclusive_group()
-    group_verbosity.add_argument(
+    argparser.add_argument(
         "-v", "--verbose", action="store_true",
         default=defaults.getboolean("verbose"), help="increase verbosity"
-        )
-    group_verbosity.add_argument(
-        "-q", "--quiet", action="store_true",
-        default=defaults.getboolean("quiet"), help="decrease verbosity"
         )
 
     return argparser
 
 
-def get_previous_args(prev_config_path):
+def get_previous_args(config_path):
     """Return previous arguments supplied from a path.
 
     Args:
-        prev_config_path (str): Path where previous arguments are
+        config_path (str): Path where previous arguments are
             stored.
 
     Raises:
         ValueError: If no previous arguments are available.
     """
-    try:
-        with open(prev_config_path) as config_file:
-            previous_args = json.load(config_file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.error("No prev_config file.")
-        raise ValueError("No previous arguments.")
+    # try:
+    with open(config_path) as config_file:
+        previous_args = json.load(config_file)
+    # except (FileNotFoundError, json.JSONDecodeError):
+    #     logger.error("No prev_config file.")
+    #     raise ValueError("No previous arguments.")
     return previous_args
 
 
 def set_booru_wallpaper(args, image_data_path):
     """Set the wallpaper to an image from a booru and write data."""
-    prev_config_path = os.path.join(data_dir, "prev_config.json")
+    config_path = os.path.join(image_data_dir, "prev_config.json")
     if args["next"]:
         logger.debug("--next called")
-        try:
-            args = get_previous_args(prev_config_path)
-        except ValueError as original_error:
-            logger.error(original_error)
-            raise ValueError(
-                "Please set some arguments before getting the next"
-                "wallpaper."
-                )
-    imageboard = args["imageboard"]
-    max_attempts = args["retries"] + 1
-    data = get_valid_image_metadata(
-        args["tags"], imageboard, attempts=max_attempts,
-        scale=args["scale"]
+        # try:
+        args = get_previous_args(config_path)
+        # except ValueError as original_error:
+        #     logger.error(original_error)
+        #     raise ValueError(
+        #         "Please set some arguments before getting the next"
+        #         "wallpaper."
+        #         )
+
+    path, data = download_image(
+        args["tags"], args["imageboard"], args["retries"] + 1, args["scale"]
         )
-    partial_url = data["file_url"]
-    url = imageboard + partial_url
-    file_extension = data["file_ext"]
-    filename = f"wallpaper.{file_extension}"
-    path = os.path.join(root_dir, "wallpapers", filename)
-    download(url, path)
     set_wallpaper(path)
+
     with open(image_data_path, "w") as data_file:
         json.dump(data, data_file, indent=4, separators=(", ", ": "))
-    with open(prev_config_path, "w") as config_file:
+    with open(config_path, "w") as config_file:
         json.dump(args, config_file, indent=4, separators=(", ", ": "))
 
 
@@ -442,21 +408,20 @@ def list_wallpaper_info(args, image_data_path):
             "copyright",
             "general",
         ]
-    try:
-        with open(image_data_path) as data_file:
-            data = json.load(data_file)
-            logger.debug(f"(list) data = {data}")
-    except FileNotFoundError:
-        raise ValueError(
-            "There is no wallpaper to list data about. "
-            "Please set some tags."
-            ) from None
+    # try:
+    with open(image_data_path) as data_file:
+        data = json.load(data_file)
+        logger.debug(f"(list) data = {data}")
+    # except FileNotFoundError:
+    #     raise ValueError(
+    #         "There is no wallpaper to list data about. "
+    #         "Please set some tags."
+    #         ) from None
     for listed_data in args["list"]:
-        list_name = listed_data.capitalize()
+        section = listed_data.capitalize()
         key = f"tag_string_{listed_data}"
         gram_list = gram_join(data[key])
-        # Functionality, therefore it is printed instead of logged.
-        print(f"{list_name}: {gram_list}")
+        print(f"{section}: {gram_list}")
 
 
 def main(argv=None):
@@ -468,13 +433,13 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    defaults_path = os.path.join(data_dir, "defaults.ini")
-    default_args = XDConfigParser(defaults_path)["DEFAULT"]
-    argparser = init_argparser(default_args)
+    defaults_path = os.path.join(image_data_dir, "defaults.ini")
+    defaults = XDConfigParser(defaults_path)["DEFAULT"]
+    argparser = init_argparser(defaults)
     args = vars(argparser.parse_args(argv))
-    image_data_path = os.path.join(data_dir, "image_data.json")
+    image_data_path = os.path.join(image_data_dir, "image_data.json")
 
-    init_logger(args["verbose"], args["quiet"])
+    init_logger(args["verbose"])
     # Nothing is logged to the terminal until the log level is
     # initialised, so logs can't be performed until now.
     logger.debug(f"argv = {argv}")
@@ -491,8 +456,8 @@ def main(argv=None):
 
     # XXX: Why is this here?
     # if args["duration"] != previous_args["duration"]:
-    #     logger.info("Scheduling next wallpaper change...")
-    #     cron_path = os.path.join(data_dir, "schedule.tab")
+    #     print("Scheduling next wallpaper change...")
+    #     cron_path = os.path.join(image_data_dir, "schedule.tab")
     #     tab = crontab.CronTab(tabfile=cron_path)
     #     tab.remove_all()
     #     command = f"{script_path} set --next"
