@@ -25,21 +25,19 @@ image_data_dir = os.path.join(root_dir, "data")
 logger = logging.getLogger(__name__)
 
 
-def init_logger(verbose, quiet):
+def init_logger(verbose):
     """Initialise the global logger's properties."""
     logger.setLevel(logging.DEBUG)
     log_path = os.path.join(root_dir, "log.log")
     debug_handler = logging.FileHandler(log_path, mode="w")
     debug_handler.setLevel(logging.DEBUG)
     debug_formatter = logging.Formatter(
-        "{asctime} - {name}:{levelname}: {message}", style="{"
+        "{name}:{levelname}: {message}", style="{"
         )
     debug_handler.setFormatter(debug_formatter)
     terminal_handler = logging.StreamHandler()
     if verbose:
         terminal_handler.setLevel(logging.DEBUG)
-    elif quiet:
-        terminal_handler.setLevel(logging.CRITICAL)
     else:
         terminal_handler.setLevel(logging.INFO)
     terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
@@ -173,7 +171,7 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
     """
     (screen_height, screen_width) = screen_dimensions()
     for attempt in range(attempts):
-        logger.info(f"Attempt {attempt}: Getting image...")
+        print(f"Attempt {attempt}: Getting image...")
         data = get_image_metadata(tags, imageboard)
         good_fit = (
             data["image_height"] >= screen_height * scale and
@@ -186,7 +184,7 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
 
 def download(url, file_path):
     """Store a copy of a file from the internet."""
-    logger.info("Downloading image...")
+    print("Downloading image...")
     urllib.request.urlretrieve(url, file_path)
 
 
@@ -248,7 +246,7 @@ def set_wallpaper(path):
         NotImplementedError: If the operating system is not yet
             supported.
     """
-    logger.info("Setting wallpaper...")
+    print("Setting wallpaper...")
     system = sys.platform
     logger.debug(f"system = {system}")
     LINUX = "linux"
@@ -273,7 +271,7 @@ class XDConfigParser(configparser.ConfigParser):
             with open(self.path) as defaults_file:
                 self.read_file(defaults_file)
         except FileNotFoundError:
-            logger.error("No defaults.ini file.")
+            logger.warning("No defaults.ini file.")
         if not self["DEFAULT"]:
             self._create_defaults()
         logger.debug("config_parser['DEFAULT']:")
@@ -289,7 +287,6 @@ class XDConfigParser(configparser.ConfigParser):
             "list": "all",
             "duration": 24,
             "verbose": False,
-            "quiet": False,
         }
         with open(self.path, "w") as defaults_file:
             self.write(defaults_file)
@@ -350,14 +347,9 @@ def init_argparser(defaults):
         help="the duration of the wallpaper in hours (default: %(default)s)"
         )
 
-    group_verbosity = argparser.add_mutually_exclusive_group()
-    group_verbosity.add_argument(
+    argparser.add_argument(
         "-v", "--verbose", action="store_true",
         default=defaults.getboolean("verbose"), help="increase verbosity"
-        )
-    group_verbosity.add_argument(
-        "-q", "--quiet", action="store_true",
-        default=defaults.getboolean("quiet"), help="decrease verbosity"
         )
 
     return argparser
@@ -447,7 +439,7 @@ def main(argv=None):
     args = vars(argparser.parse_args(argv))
     image_data_path = os.path.join(image_data_dir, "image_data.json")
 
-    init_logger(args["verbose"], args["quiet"])
+    init_logger(args["verbose"])
     # Nothing is logged to the terminal until the log level is
     # initialised, so logs can't be performed until now.
     logger.debug(f"argv = {argv}")
@@ -464,7 +456,7 @@ def main(argv=None):
 
     # XXX: Why is this here?
     # if args["duration"] != previous_args["duration"]:
-    #     logger.info("Scheduling next wallpaper change...")
+    #     print("Scheduling next wallpaper change...")
     #     cron_path = os.path.join(image_data_dir, "schedule.tab")
     #     tab = crontab.CronTab(tabfile=cron_path)
     #     tab.remove_all()
