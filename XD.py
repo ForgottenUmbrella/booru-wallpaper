@@ -242,6 +242,8 @@ def set_linux_wallpaper(path):
             "xfconf-query -c xfce4-desktop -p"
             f"$xfce_desktop_prop_prefix/workspace1/last-image -s {path}"
             )
+    elif de == "enlightenment":
+        command = f"enlightenment_remote -desktop-bg-add 0 0 0 0 {path}"
     else:
         command = f"feh --bg-scale {path}"
     subprocess.call(command, shell=True)
