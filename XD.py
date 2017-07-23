@@ -210,15 +210,41 @@ def set_linux_wallpaper(path):
 
     Args:
         path (str): Path of image to use as wallpaper.
-
-    Raises:
-        NotImplementedError: If the DE/WM is not yet supported.
     """
-    # TODO: Work on all desktop environments and window managers.
-    subprocess.call(
-        "gsettings set org.gnome.desktop.background picture-uri "
-        f"file://{path}", shell=True
-        )
+    de = os.environ.get("XDG_CURRENT_DESKTOP").lower()
+    if de in {"gnome", "x-cinnamon", "unity", "pantheon", "budgie:gnome"}:
+        command = (
+            "gsettings set org.gnome.desktop.background picture-uri "
+            f"file://{path}"
+            )
+    elif de == "mate":
+        command = (
+            "gsettings set org.mate.background picture-uri "
+            f"file://{path}"
+            )
+    elif de == "kde":
+        command = (
+            "qdbus org.kde.plasmashell /PlasmaShell "
+            "org.kde.PlasmaShell.evaluateScript \""
+            "var allDesktops = desktops();"
+            "for(i = 0; i < allDesktops.length; i++) {"
+            "d = allDesktops[i];"
+            "d.wallpaperPlugin = 'org.kde.image';"
+            "d.currentConfigGroup = Array("
+            "'Wallpaper', 'org.kde.image', 'General'"
+            ");"
+            f"d.writeConfig('Image', 'file://{path}');"
+            "}"
+            "\""
+            )
+    elif de == "xfce":
+        command = (
+            "xfconf-query -c xfce4-desktop -p"
+            f"$xfce_desktop_prop_prefix/workspace1/last-image -s {path}"
+            )
+    else:
+        command = f"feh --bg-scale {path}"
+    subprocess.call(command, shell=True)
 
 
 def set_windows_wallpaper(path):
