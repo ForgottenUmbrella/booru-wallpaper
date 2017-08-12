@@ -17,18 +17,18 @@ import PIL.Image
 import PIL.ImageEnhance
 import PIL.ImageFilter
 
-script_path = os.path.realpath(__file__)
-root_dir = os.path.dirname(script_path)
-image_data_dir = os.path.join(root_dir, "data")
-wallpaper_dir = os.path.join(root_dir, "wallpapers")
+SCRIPT_PATH = os.path.realpath(__file__)
+ROOT_DIR = os.path.dirname(SCRIPT_PATH)
+IMAGE_DATA_DIR = os.path.join(ROOT_DIR, "data")
+WALLPAPER_DIR = os.path.join(ROOT_DIR, "wallpapers")
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def init_logger(verbose):
     """Initialise the global logger's properties."""
-    logger.setLevel(logging.DEBUG)
-    log_path = os.path.join(root_dir, "log.log")
+    LOGGER.setLevel(logging.DEBUG)
+    log_path = os.path.join(ROOT_DIR, "log.log")
     debug_handler = logging.FileHandler(log_path, mode="w")
     debug_handler.setLevel(logging.DEBUG)
     debug_formatter = logging.Formatter(
@@ -42,8 +42,8 @@ def init_logger(verbose):
         terminal_handler.setLevel(logging.INFO)
     terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
     terminal_handler.setFormatter(terminal_formatter)
-    logger.addHandler(debug_handler)
-    logger.addHandler(terminal_handler)
+    LOGGER.addHandler(debug_handler)
+    LOGGER.addHandler(terminal_handler)
 
 
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
@@ -77,7 +77,7 @@ def screen_dimensions():
     height = root.winfo_screenheight()
     width = root.winfo_screenwidth()
     dimensions = (height, width)
-    logger.debug(f"screen dimensions = {height}x{width}")
+    LOGGER.debug(f"screen dimensions = {height}x{width}")
     return dimensions
 
 
@@ -94,27 +94,27 @@ def get_json(url):
     #     RequestError: If the request is unsuccessful.
     #     ValueError: If no JSON data is available from `url`.
     """
-    SUCCESS = range(100, 400)
-    logger.debug(f"GET url = {url}")
-    with urllib.request.urlopen(url) as request:
-        status = request.getcode()
-        logger.debug(f"status = {status}")
-        succeeded = status in SUCCESS
+    success = range(100, 400)
+    LOGGER.debug(f"GET url = {url}")
+    with urllib.request.urlopen(url) as response:
+        status = response.getcode()
+        LOGGER.debug(f"status = {status}")
+        succeeded = status in success
         if succeeded:
-            raw = request.read()
-            encoding = request.headers.get_content_charset()
-            logger.debug(f"encoding = {encoding}")
+            raw = response.read()
+            encoding = response.headers.get_content_charset()
+            LOGGER.debug(f"encoding = {encoding}")
             decoded = raw.decode(encoding)
             # try:
             json_data = json.loads(decoded)
             # except json.JSONDecodeError as original_error:
-            #     logger.error(original_error)
+            #     LOGGER.error(original_error)
             #     raise ValueError(f"{url} does not have JSON data.")
         # else:
-            # raise RequestError(f"Request returned code {status}.")
+            # raise RequestError(f"Response returned code {status}.")
     # if not json_data:
         # raise ValueError(f"No data from {url}.")
-    logger.debug(f"json_data = {json_data}")
+    LOGGER.debug(f"json_data = {json_data}")
     return json_data
 
 
@@ -143,13 +143,13 @@ def get_image_metadata(tags, imageboard):
     # try:
     data = get_json(post)[0]
     # except urllib.error.HTTPError as original_error:
-    #     logger.error(original_error)
+    #     LOGGER.error(original_error)
     #     raise ValueError("Too many tags.") from None
     # except urllib.error.URLError as original_error:
-    #     logger.error(original_error)
+    #     LOGGER.error(original_error)
     #     raise OSError("No internet connection.") from None
     # except ValueError as original_error:
-    #     logger.error(original_error)
+    #     LOGGER.error(original_error)
     #     raise ValueError("Invalid/conflicting tags.") from None
     return data
 
@@ -218,25 +218,25 @@ def download_image(tags, imageboard, attempts, scale):
     extension = data["file_ext"]
     # TODO: Use default name. /wallpaper.
     filename = f"wallpaper.{extension}"
-    path = os.path.join(wallpaper_dir, filename)
+    path = os.path.join(WALLPAPER_DIR, filename)
     download(url, path)
     return path, data
 
 
 def set_linux_wallpaper(path):
     """Set the desktop wallpaper on GNU/Linux."""
-    de = os.environ.get("XDG_CURRENT_DESKTOP").lower()
-    if de in {"gnome", "x-cinnamon", "unity", "pantheon", "budgie:gnome"}:
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP").lower()
+    if desktop in {"gnome", "x-cinnamon", "unity", "pantheon", "budgie:gnome"}:
         command = (
             "gsettings set org.gnome.desktop.background picture-uri "
             f"file://{path}"
             )
-    elif de == "mate":
+    elif desktop == "mate":
         command = (
             "gsettings set org.mate.background picture-uri "
             f"file://{path}"
             )
-    elif de == "kde":
+    elif desktop == "kde":
         command = (
             "qdbus org.kde.plasmashell /PlasmaShell "
             "org.kde.PlasmaShell.evaluateScript \""
@@ -251,12 +251,12 @@ def set_linux_wallpaper(path):
             "}"
             "\""
             )
-    elif de == "xfce":
+    elif desktop == "xfce":
         command = (
             "xfconf-query -c xfce4-desktop -p"
             f"$xfce_desktop_prop_prefix/workspace1/last-image -s {path}"
             )
-    elif de == "enlightenment":
+    elif desktop == "enlightenment":
         command = f"enlightenment_remote -desktop-bg-add 0 0 0 0 {path}"
     else:
         command = f"feh --bg-scale {path}"
@@ -265,12 +265,11 @@ def set_linux_wallpaper(path):
 
 def set_windows_wallpaper(path):
     """Set the desktop wallpaper on Windows."""
-    SPI_SETDESKTOPWALLPAPER = 20
-    SPIF_SENDCHANGE = 2
-    IRRELEVANT_PARAM = 0
+    spi_setdesktopwallpaper = 20
+    spif_sendchange = 2
+    irrelevant_param = 0
     ctypes.windll.user32.SystemParametersInfoW(
-        SPI_SETDESKTOPWALLPAPER, IRRELEVANT_PARAM, path,
-        SPIF_SENDCHANGE
+        spi_setdesktopwallpaper, irrelevant_param, path, spif_sendchange
         )
 
 
@@ -294,15 +293,12 @@ def set_wallpaper(path):
     """
     print("Setting wallpaper...")
     system = sys.platform
-    logger.debug(f"system = {system}")
-    LINUX = "linux"
-    WINDOWS = "win32"
-    MAC = "darwin"
-    if system == LINUX:
+    LOGGER.debug(f"system = {system}")
+    if system == "linux":
         set_linux_wallpaper(path)
-    elif system == WINDOWS:
+    elif system == "win32":
         set_windows_wallpaper(path)
-    elif system == MAC:
+    elif system == "darwin":
         set_mac_wallpaper(path)
     else:
         raise NotImplementedError("OS is not yet supported.")
@@ -317,12 +313,12 @@ class XDConfigParser(configparser.ConfigParser):
             with open(self.path) as defaults_file:
                 self.read_file(defaults_file)
         except FileNotFoundError:
-            logger.warning("No defaults.ini file.")
+            LOGGER.warning("No defaults.ini file.")
         if not self["DEFAULT"]:
             self._create_defaults()
-        logger.debug("config_parser['DEFAULT']:")
+        LOGGER.debug("config_parser['DEFAULT']:")
         for key, value in self["DEFAULT"].items():
-            logger.debug(f"{key} = {repr(value)}")
+            LOGGER.debug(f"{key} = {repr(value)}")
 
     def _create_defaults(self):
         self["DEFAULT"] = {
@@ -343,9 +339,8 @@ class XDConfigParser(configparser.ConfigParser):
 
 def init_argparser(defaults):
     """Return an ArgumentParser with appropriate defaults."""
-    PERCENTAGE = range(0, 101)
-    PERCENT_META = "{0 ... 100}"
-
+    percentage = range(0, 101)
+    percent_meta = "{0 ... 100}"
     argparser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru"
@@ -400,20 +395,20 @@ def init_argparser(defaults):
         "edit", help="modify the current wallpaper"
         )
     subparser_edit.add_argument(
-        "-b", "--blur", type=int, choices=PERCENTAGE,
-        default=int(defaults["blur"]), metavar=PERCENT_META,
+        "-b", "--blur", type=int, choices=percentage,
+        default=int(defaults["blur"]), metavar=percent_meta,
         help="how blurry the image should be, as a percentage "
         "(default: %(default)s)"
         )
     subparser_edit.add_argument(
-        "-g", "--grey", type=int, choices=PERCENTAGE,
-        default=int(defaults["grey"]), metavar=PERCENT_META,
+        "-g", "--grey", type=int, choices=percentage,
+        default=int(defaults["grey"]), metavar=percent_meta,
         help="how monochrome the image should be, as a percentage "
         "(default: %(default)s)"
         )
     subparser_edit.add_argument(
-        "-d", "--dim", type=int, choices=PERCENTAGE,
-        default=int(defaults["dim"]), metavar=PERCENT_META,
+        "-d", "--dim", type=int, choices=percentage,
+        default=int(defaults["dim"]), metavar=percent_meta,
         help="how dark the image should be, as a percentage "
         "(default: %(default)s)"
         )
@@ -448,20 +443,20 @@ def get_previous_args(config_path):
     with open(config_path) as config_file:
         previous_args = json.load(config_file)
     # except (FileNotFoundError, json.JSONDecodeError):
-    #     logger.error("No prev_config file.")
+    #     LOGGER.error("No prev_config file.")
     #     raise ValueError("No previous arguments.")
     return previous_args
 
 
 def set_booru_wallpaper(args, image_data_path):
     """Set the wallpaper to an image from a booru and write data."""
-    config_path = os.path.join(image_data_dir, "prev_config.json")
+    config_path = os.path.join(IMAGE_DATA_DIR, "prev_config.json")
     if args["next"]:
-        logger.debug("--next called")
+        LOGGER.debug("--next called")
         # try:
         args = get_previous_args(config_path)
         # except ValueError as original_error:
-        #     logger.error(original_error)
+        #     LOGGER.error(original_error)
         #     raise ValueError(
         #         "Please set some arguments before getting the next"
         #         "wallpaper."
@@ -490,7 +485,7 @@ def list_wallpaper_info(args, image_data_path):
     # try:
     with open(image_data_path) as data_file:
         data = json.load(data_file)
-        logger.debug(f"(list) data = {data}")
+        LOGGER.debug(f"(list) data = {data}")
     # except FileNotFoundError:
     #     raise ValueError(
     #         "There is no wallpaper to list data about. "
@@ -551,17 +546,17 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    defaults_path = os.path.join(image_data_dir, "defaults.ini")
+    defaults_path = os.path.join(IMAGE_DATA_DIR, "defaults.ini")
     defaults = XDConfigParser(defaults_path)["DEFAULT"]
     argparser = init_argparser(defaults)
     args = vars(argparser.parse_args(argv))
-    image_data_path = os.path.join(image_data_dir, "image_data.json")
+    image_data_path = os.path.join(IMAGE_DATA_DIR, "image_data.json")
 
     init_logger(args["verbose"])
     # Nothing is logged to the terminal until the log level is
     # initialised, so logs can't be performed until now.
-    logger.debug(f"argv = {argv}")
-    logger.debug(f"args = {args}")
+    LOGGER.debug(f"argv = {argv}")
+    LOGGER.debug(f"args = {args}")
 
     no_args = (len(sys.argv) == 1)
     if no_args:
@@ -574,17 +569,17 @@ def main(argv=None):
         list_wallpaper_info(args, image_data_path)
     if args["subcommand"] == "edit":
         data = read_json(image_data_path)
-        path = os.path.join(wallpaper_dir, f"wallpaper.{data['file_ext']}")
+        path = os.path.join(WALLPAPER_DIR, f"wallpaper.{data['file_ext']}")
         edit_wallpaper(path, args["blur"], args["grey"], args["dim"])
         set_wallpaper(path)
 
     # XXX: Why is this here? FIXME: scheduling
     # if args["duration"] != previous_args["duration"]:
     #     print("Scheduling next wallpaper change...")
-    #     cron_path = os.path.join(image_data_dir, "schedule.tab")
+    #     cron_path = os.path.join(IMAGE_DATA_DIR, "schedule.tab")
     #     tab = crontab.CronTab(tabfile=cron_path)
     #     tab.remove_all()
-    #     command = f"{script_path} set --next"
+    #     command = f"{SCRIPT_PATH} set --next"
     #     cron_job = tab.new(command)
     #     if args["duration"] == 24:
     #         cron_job.every().dom()
@@ -592,14 +587,14 @@ def main(argv=None):
     #         cron_job.every(args["duration"]).hours()
     #     tab.write()
     #     tab_view = tab.render()
-    #     logger.debug(f"cron_job = {tab_view}")
+    #     LOGGER.debug(f"cron_job = {tab_view}")
         # user = getpass.getuser()
         # cron_path = f"/var/spool/cron/crontabs/{user}"
         # try:
         #     with open(cron_path) as cron_file:
         #         crontab = cron_file.readlines()
         # except FileNotFoundError:
-        #     logger.error("No cron_file.")
+        #     LOGGER.error("No cron_file.")
         #     crontab = []
         #
         # for line_number, line in enumerate(crontab):
@@ -613,9 +608,9 @@ def main(argv=None):
         # else:
         #     duration = "0 */{args["duration"] * * *"
         #
-        # command = f"{script_path} set --next # booru-wallpaper"
-        # crontab[line_number] = f"{duration} {command}\n"
-        # logger.debug(f"crontab = {crontab}")
+        # command = f"{SCRIPT_PATH} set --next # booru-wallpaper"
+        # CRONTAB[LINE_NUMBER] = F"{DURATION} {COMMAND}\N"
+        # LOGGER.debug(f"crontab = {crontab}")
         # with open(cron_path, "w") as cron_file:
         #     cron_file.writelines(crontab)
 
