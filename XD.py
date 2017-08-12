@@ -18,31 +18,14 @@ import PIL.ImageFilter
 
 SCRIPT_PATH = os.path.realpath(__file__)
 ROOT_DIR = os.path.dirname(SCRIPT_PATH)
-IMAGE_DATA_DIR = os.path.join(ROOT_DIR, "data")
-WALLPAPER_DIR = os.path.join(ROOT_DIR, "wallpapers")
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+IMAGE_DATA_PATH = os.path.join(DATA_DIR, "image_data.json")
+DEFAULTS_PATH = os.path.join(DATA_DIR, "defaults.ini")
+CONFIG_PATH = os.path.join(DATA_DIR, "prev_config.json")
+WALLPAPERS_DIR = os.path.join(ROOT_DIR, "wallpapers")
+LOG_PATH = os.path.join(ROOT_DIR, "log.log")
 
 LOGGER = logging.getLogger(__name__)
-
-
-def init_logger(verbose):
-    """Initialise the global logger's properties."""
-    LOGGER.setLevel(logging.DEBUG)
-    log_path = os.path.join(ROOT_DIR, "log.log")
-    debug_handler = logging.FileHandler(log_path, mode="w")
-    debug_handler.setLevel(logging.DEBUG)
-    debug_formatter = logging.Formatter(
-        "{name}:{levelname}: {message}", style="{"
-        )
-    debug_handler.setFormatter(debug_formatter)
-    terminal_handler = logging.StreamHandler()
-    if verbose:
-        terminal_handler.setLevel(logging.DEBUG)
-    else:
-        terminal_handler.setLevel(logging.INFO)
-    terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
-    terminal_handler.setFormatter(terminal_formatter)
-    LOGGER.addHandler(debug_handler)
-    LOGGER.addHandler(terminal_handler)
 
 
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
@@ -80,6 +63,22 @@ def screen_dimensions():
     return dimensions
 
 
+def read_json(path):
+    """Return a JSON object from a file."""
+    with open(path) as file:
+        data = json.load(file)
+    return data
+
+
+def download(url, path):
+    """Store a copy of a file from the internet."""
+    print("Downloading image...")
+    response = requests.get(url, stream=True)
+    with open(path, "wb") as file:
+        for chunk in response.iter_content(chunk_size=128):
+            file.write(chunk)
+
+
 def get_json(url, params):
     """Make a GET request and return the JSON data as a dict.
 
@@ -114,42 +113,7 @@ def get_json(url, params):
     return json_data
 
 
-def get_image_metadata(tags, imageboard):
-    """Retrieve an image and return its metadata.
-
-    Args:
-        tags ([str]): Labels the image must match.
-        imageboard (str): URL of the website to get images from.
-
-    Returns:
-        dict: Data stored about the image from the imageboard.
-
-    # Raises:
-    #     ValueError: If there are too many tags, or there were no images
-    #         tagged with them all.
-    #     OSError: If there was no internet connection available.
-    """
-    # try:
-    url = f"{imageboard}/posts.json"
-    params = {
-        "limit": 1,
-        "tags": " ".join(tags),
-        "random": "true",
-        }
-    data = get_json(url, params)[0]
-    # except urllib.error.HTTPError as original_error:
-    #     LOGGER.error(original_error)
-    #     raise ValueError("Too many tags.") from None
-    # except urllib.error.URLError as original_error:
-    #     LOGGER.error(original_error)
-    #     raise OSError("No internet connection.") from None
-    # except ValueError as original_error:
-    #     LOGGER.error(original_error)
-    #     raise ValueError("Invalid/conflicting tags.") from None
-    return data
-
-
-def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
+def get_image_data(tags, imageboard, attempts=1, scale=1.0):
     """Return an image's metadata if it matches the requirements.
 
     Args:
@@ -165,13 +129,32 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
 
     Raises:
         ValueError: If none of the images fetched meet all requirements.
+    #     ValueError: If there are too many tags, or there were no images
+    #         tagged with them all.
+    #     OSError: If there was no internet connection available.
     """
+    url = f"{imageboard}/posts.json"
+    params = {
+        "limit": 1,
+        "tags": " ".join(tags),
+        "random": "true",
+        }
     (screen_height, screen_width) = screen_dimensions()
     for attempt in range(attempts):
         # `attempt` is zero-based, but humans aren't.
         real_attempt = attempt + 1
         print(f"Attempt {real_attempt}: Getting image...")
-        data = get_image_metadata(tags, imageboard)
+        # try:
+        data = get_json(url, params)[0]
+        # except urllib.error.HTTPError as original_error:
+        #     LOGGER.error(original_error)
+        #     raise ValueError("Too many tags.") from None
+        # except urllib.error.URLError as original_error:
+        #     LOGGER.error(original_error)
+        #     raise OSError("No internet connection.") from None
+        # except ValueError as original_error:
+        #     LOGGER.error(original_error)
+        #     raise ValueError("Invalid/conflicting tags.") from None
         good_fit = (
             data["image_height"] >= screen_height * scale and
             data["image_width"] >= screen_width * scale
@@ -179,22 +162,6 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
         if good_fit:
             return data
     raise ValueError("No images were large enough.")
-
-
-def read_json(path):
-    """Return a JSON object from a file."""
-    with open(path) as file:
-        data = json.load(file)
-    return data
-
-
-def download(url, file_path):
-    """Store a copy of a file from the internet."""
-    print("Downloading image...")
-    response = requests.get(url, stream=True)
-    with open(file_path, "wb") as file:
-        for chunk in response.iter_content(chunk_size=128):
-            file.write(chunk)
 
 
 def download_image(tags, imageboard, attempts, scale):
@@ -209,14 +176,14 @@ def download_image(tags, imageboard, attempts, scale):
     Returns:
         tuple: The path of the image and its metadata.
     """
-    data = get_valid_image_metadata(
+    data = get_image_data(
         tags, imageboard, attempts=attempts, scale=scale
         )
     url = imageboard + data["file_url"]
     extension = data["file_ext"]
     # TODO: Use default name. /wallpaper.
     filename = f"wallpaper.{extension}"
-    path = os.path.join(WALLPAPER_DIR, filename)
+    path = os.path.join(WALLPAPERS_DIR, filename)
     download(url, path)
     return path, data
 
@@ -302,6 +269,26 @@ def set_wallpaper(path):
         raise NotImplementedError("OS is not yet supported.")
 
 
+def init_logger(verbose):
+    """Initialise the global logger's properties."""
+    LOGGER.setLevel(logging.DEBUG)
+    debug_handler = logging.FileHandler(LOG_PATH, mode="w")
+    debug_handler.setLevel(logging.DEBUG)
+    debug_formatter = logging.Formatter(
+        "{name}:{levelname}: {message}", style="{"
+        )
+    debug_handler.setFormatter(debug_formatter)
+    terminal_handler = logging.StreamHandler()
+    if verbose:
+        terminal_handler.setLevel(logging.DEBUG)
+    else:
+        terminal_handler.setLevel(logging.INFO)
+    terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
+    terminal_handler.setFormatter(terminal_formatter)
+    LOGGER.addHandler(debug_handler)
+    LOGGER.addHandler(terminal_handler)
+
+
 class XDConfigParser(configparser.ConfigParser):
     """ConfigParser for this program."""
     def __init__(self, path):
@@ -340,12 +327,29 @@ def init_argparser(defaults):
     percentage = range(0, 101)
     percent_meta = "{0 ... 100}"
 
+    # Cast booleans, since configparser doesn't. `parse_args` method has
+    # undefined behaviour when both `set_defaults` and the `default`
+    # argument are passed, so the defaults need to be modified in-place.
+    real_defaults = dict(defaults)
+    for key in ("verbose", "next"):
+        real_defaults[key] = defaults.getboolean(key)
+    defaults = real_defaults
+
     main_parser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
     main_parser.set_defaults(**defaults)
+    main_parser.add_argument(
+        "-d", "--duration", type=int, choices=range(1, 25),
+        metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
+        )
+    main_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        # default=defaults.getboolean("verbose"),
+        help="increase verbosity"
+        )
     subparsers = main_parser.add_subparsers(dest="subcommand")
 
     subparser_set = subparsers.add_parser(
@@ -371,7 +375,7 @@ def init_argparser(defaults):
     # TODO: move out of subparser
     subparser_set.add_argument(
         "-n", "--next", action="store_true",
-        default=defaults.getboolean("next"),
+        # default=defaults.getboolean("next"),
         help="get the next wallpaper using the previous settings"
         )
 
@@ -411,50 +415,17 @@ def init_argparser(defaults):
         help="how dark the image should be, as a percentage"
         )
 
-    main_parser.add_argument(
-        "-d", "--duration", type=int, choices=range(1, 25),
-        metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
-        )
-    main_parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        default=defaults.getboolean("verbose"), help="increase verbosity"
-        )
-
     return main_parser
 
 
-def get_previous_args(config_path):
-    """Return previous arguments supplied from a path.
-
-    Args:
-        config_path (str): Path where previous arguments are
-            stored.
-
-    Returns:
-        dict: The previous arguments passed as key-value pairs.
-
-    Raises:
-        ValueError: If no previous arguments are available.
-    """
-    # try:
-    # with open(config_path) as config_file:
-    #     previous_args = json.load(config_file)
-    previous_args = read_json(config_path)
-    # except (FileNotFoundError, json.JSONDecodeError):
-    #     LOGGER.error("No prev_config file.")
-    #     raise ValueError("No previous arguments.")
-    return previous_args
-
-
-def set_booru_wallpaper(args, image_data_path):
+def set_booru_wallpaper(args, IMAGE_DATA_PATH):
     """Set the wallpaper to an image from a booru and write data."""
-    config_path = os.path.join(IMAGE_DATA_DIR, "prev_config.json")
     if args["next"]:
         LOGGER.debug("--next called")
         # try:
-        args = get_previous_args(config_path)
-        # except ValueError as original_error:
-        #     LOGGER.error(original_error)
+        args = read_json(CONFIG_PATH)
+        # except (FileNotFoundError, json.JSONDecodeError):
+        #     LOGGER.error("No prev_config file.")
         #     raise ValueError(
         #         "Please set some arguments before getting the next"
         #         "wallpaper."
@@ -465,13 +436,13 @@ def set_booru_wallpaper(args, image_data_path):
         )
     set_wallpaper(path)
 
-    with open(image_data_path, "w") as data_file:
+    with open(IMAGE_DATA_PATH, "w") as data_file:
         json.dump(data, data_file, indent=4, separators=(", ", ": "))
-    with open(config_path, "w") as config_file:
+    with open(CONFIG_PATH, "w") as config_file:
         json.dump(args, config_file, indent=4, separators=(", ", ": "))
 
 
-def list_wallpaper_info(args, image_data_path):
+def list_wallpaper_info(args, IMAGE_DATA_PATH):
     """Print requested information about the current wallpaper."""
     if "all" in args["list"]:
         args["list"] = [
@@ -481,9 +452,7 @@ def list_wallpaper_info(args, image_data_path):
             "general",
         ]
     # try:
-    # with open(image_data_path) as data_file:
-    #     data = json.load(data_file)
-    data = read_json(image_data_path)
+    data = read_json(IMAGE_DATA_PATH)
     LOGGER.debug(f"(list) data = {data}")
     # except FileNotFoundError:
     #     raise ValueError(
@@ -545,11 +514,9 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    defaults_path = os.path.join(IMAGE_DATA_DIR, "defaults.ini")
-    defaults = XDConfigParser(defaults_path)["DEFAULT"]
+    defaults = XDConfigParser(DEFAULTS_PATH)["DEFAULT"]
     argparser = init_argparser(defaults)
     args = vars(argparser.parse_args(argv))
-    image_data_path = os.path.join(IMAGE_DATA_DIR, "image_data.json")
 
     init_logger(args["verbose"])
     # Nothing is logged to the terminal until the log level is
@@ -563,12 +530,12 @@ def main(argv=None):
         sys.exit(1)
 
     if args["subcommand"] == "set":
-        set_booru_wallpaper(args, image_data_path)
+        set_booru_wallpaper(args, IMAGE_DATA_PATH)
     if args["subcommand"] == "list":
-        list_wallpaper_info(args, image_data_path)
+        list_wallpaper_info(args, IMAGE_DATA_PATH)
     if args["subcommand"] == "edit":
-        data = read_json(image_data_path)
-        path = os.path.join(WALLPAPER_DIR, f"wallpaper.{data['file_ext']}")
+        data = read_json(IMAGE_DATA_PATH)
+        path = os.path.join(WALLPAPERS_DIR, f"wallpaper.{data['file_ext']}")
         edit_wallpaper(path, args["blur"], args["grey"], args["dim"])
         set_wallpaper(path)
 
