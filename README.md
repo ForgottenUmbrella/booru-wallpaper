@@ -14,10 +14,13 @@ someone else too. Someday I might make a fork of the client with support for
 extensions, but I'll wait and see if the original developer is making any
 progress before doing so.
 
-## Dependencies
+## Requirements
 * Python 3.6
 * Pillow
 * Tk
+* Requests
+
+You can install the missing modules with, `pip install --user MODULE_NAME`.
 
 ## Usage
 Call the script from the terminal with the `--help` flag for usage.
