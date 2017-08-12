@@ -438,8 +438,9 @@ def get_previous_args(config_path):
         ValueError: If no previous arguments are available.
     """
     # try:
-    with open(config_path) as config_file:
-        previous_args = json.load(config_file)
+    # with open(config_path) as config_file:
+    #     previous_args = json.load(config_file)
+    previous_args = read_json(config_path)
     # except (FileNotFoundError, json.JSONDecodeError):
     #     LOGGER.error("No prev_config file.")
     #     raise ValueError("No previous arguments.")
@@ -481,9 +482,10 @@ def list_wallpaper_info(args, image_data_path):
             "general",
         ]
     # try:
-    with open(image_data_path) as data_file:
-        data = json.load(data_file)
-        LOGGER.debug(f"(list) data = {data}")
+    # with open(image_data_path) as data_file:
+    #     data = json.load(data_file)
+    data = read_json(image_data_path)
+    LOGGER.debug(f"(list) data = {data}")
     # except FileNotFoundError:
     #     raise ValueError(
     #         "There is no wallpaper to list data about. "
