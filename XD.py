@@ -4,15 +4,14 @@
 import sys
 import os.path
 import subprocess
-import urllib.parse
-import urllib.request
 import argparse
 import configparser
 import json
 import ctypes
 import logging
-import tkinter
 
+import tkinter
+import requests
 import PIL.Image
 import PIL.ImageEnhance
 import PIL.ImageFilter
@@ -81,11 +80,12 @@ def screen_dimensions():
     return dimensions
 
 
-def get_json(url):
+def get_json(url, params):
     """Make a GET request and return the JSON data as a dict.
 
     Args:
         url (str): Webpage link to make a request to.
+        params (dict): Parameters to pass to URL.
 
     Returns:
         dict: A JSON object from `url` decoded to a Python dictionary.
@@ -96,22 +96,18 @@ def get_json(url):
     """
     success = range(100, 400)
     LOGGER.debug(f"GET url = {url}")
-    with urllib.request.urlopen(url) as response:
-        status = response.getcode()
-        LOGGER.debug(f"status = {status}")
-        succeeded = status in success
-        if succeeded:
-            raw = response.read()
-            encoding = response.headers.get_content_charset()
-            LOGGER.debug(f"encoding = {encoding}")
-            decoded = raw.decode(encoding)
-            # try:
-            json_data = json.loads(decoded)
-            # except json.JSONDecodeError as original_error:
-            #     LOGGER.error(original_error)
-            #     raise ValueError(f"{url} does not have JSON data.")
-        # else:
-            # raise RequestError(f"Response returned code {status}.")
+    response = requests.get(url, params=params)
+    status = response.status_code
+    LOGGER.debug(f"status = {status}")
+    succeeded = status in success
+    if succeeded:
+        # try:
+        json_data = response.json()
+        # except json.JSONDecodeError as original_error:
+        #     LOGGER.error(original_error)
+        #     raise ValueError(f"{url} does not have JSON data.")
+    # else:
+        # raise RequestError(f"Response returned code {status}.")
     # if not json_data:
         # raise ValueError(f"No data from {url}.")
     LOGGER.debug(f"json_data = {json_data}")
@@ -133,15 +129,14 @@ def get_image_metadata(tags, imageboard):
     #         tagged with them all.
     #     OSError: If there was no internet connection available.
     """
-    posts = f"{imageboard}/posts.json"
-    query = urllib.parse.urlencode({
+    # try:
+    url = f"{imageboard}/posts.json"
+    params = {
         "limit": 1,
         "tags": " ".join(tags),
         "random": "true",
-        })
-    post = f"{posts}?{query}"
-    # try:
-    data = get_json(post)[0]
+        }
+    data = get_json(url, params)[0]
     # except urllib.error.HTTPError as original_error:
     #     LOGGER.error(original_error)
     #     raise ValueError("Too many tags.") from None
@@ -196,7 +191,10 @@ def read_json(path):
 def download(url, file_path):
     """Store a copy of a file from the internet."""
     print("Downloading image...")
-    urllib.request.urlretrieve(url, file_path)
+    response = requests.get(url, stream=True)
+    with open(file_path, "wb") as file:
+        for chunk in response.iter_content(chunk_size=128):
+            file.write(chunk)
 
 
 def download_image(tags, imageboard, attempts, scale):
