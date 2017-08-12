@@ -4,8 +4,6 @@
 import sys
 import os.path
 import subprocess
-# TODO: Useless import??
-# import getpass
 import urllib.parse
 import urllib.request
 import argparse
@@ -15,12 +13,14 @@ import ctypes
 import logging
 import tkinter
 
-# TODO: Undo comment import
-# import crontab
+import PIL.Image
+import PIL.ImageEnhance
+import PIL.ImageFilter
 
 script_path = os.path.realpath(__file__)
 root_dir = os.path.dirname(script_path)
 image_data_dir = os.path.join(root_dir, "data")
+wallpaper_dir = os.path.join(root_dir, "wallpapers")
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +186,13 @@ def get_valid_image_metadata(tags, imageboard, attempts=1, scale=1.0):
     raise ValueError("No images were large enough.")
 
 
+def read_json(path):
+    """Return a JSON object from a file."""
+    with open(path) as file:
+        data = json.load(file)
+    return data
+
+
 def download(url, file_path):
     """Store a copy of a file from the internet."""
     print("Downloading image...")
@@ -193,24 +200,31 @@ def download(url, file_path):
 
 
 def download_image(tags, imageboard, attempts, scale):
-    """Download an image and return its path and data."""
+    """Download an image and return its path and data.
+
+    Args:
+        tags ([str]): Labels the image must match.
+        imageboard (str): URL of website to download from.
+        attempts (int): How many times to try to get a good image.
+        scale (float): Relative image size in relation to the screen.
+
+    Returns:
+        tuple: The path of the image and its metadata.
+    """
     data = get_valid_image_metadata(
         tags, imageboard, attempts=attempts, scale=scale
         )
     url = imageboard + data["file_url"]
     extension = data["file_ext"]
-    # TODO: Use default name.
+    # TODO: Use default name. /wallpaper.
     filename = f"wallpaper.{extension}"
-    path = os.path.join(root_dir, "wallpapers", filename)
+    path = os.path.join(wallpaper_dir, filename)
     download(url, path)
     return path, data
 
-def set_linux_wallpaper(path):
-    """Set the desktop wallpaper on GNU/Linux.
 
-    Args:
-        path (str): Path of image to use as wallpaper.
-    """
+def set_linux_wallpaper(path):
+    """Set the desktop wallpaper on GNU/Linux."""
     de = os.environ.get("XDG_CURRENT_DESKTOP").lower()
     if de in {"gnome", "x-cinnamon", "unity", "pantheon", "budgie:gnome"}:
         command = (
@@ -317,6 +331,9 @@ class XDConfigParser(configparser.ConfigParser):
             "scale": 0.0,
             "next": False,
             "list": "all",
+            "blur": 0,
+            "grey": 0,
+            "dim": 0,
             "duration": 24,
             "verbose": False,
         }
@@ -326,13 +343,17 @@ class XDConfigParser(configparser.ConfigParser):
 
 def init_argparser(defaults):
     """Return an ArgumentParser with appropriate defaults."""
+    PERCENTAGE = range(0, 101)
+    PERCENT_META = "{0 ... 100}"
     argparser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru"
         )
     subparsers = argparser.add_subparsers(dest="subcommand")
 
-    subparser_set = subparsers.add_parser("set", help="set the wallpaper")
+    subparser_set = subparsers.add_parser(
+        "set", help="get an image and set it as the wallpaper"
+        )
     subparser_set.add_argument(
         "tags", nargs="*",
         help="a space-delimited list of tags the image must match"
@@ -351,6 +372,7 @@ def init_argparser(defaults):
         help="the minimum relative size of the image to the screen "
         "(default: %(default)s)"
         )
+    # TODO: move out of subparser
     subparser_set.add_argument(
         "-n", "--next", action="store_true",
         default=defaults.getboolean("next"),
@@ -358,7 +380,7 @@ def init_argparser(defaults):
         )
 
     subparser_list = subparsers.add_parser(
-        "list", help="list information about the current wallpaper"
+        "list", help="print information about the current wallpaper"
         )
     subparser_list.add_argument(
         "list", nargs="*", choices=[
@@ -371,6 +393,28 @@ def init_argparser(defaults):
             # ], default=[element.strip() for element in defaults["list"].split(",")],
         ], default="all",
         help="the list to list (default: %(default)s)"
+        )
+
+    subparser_edit = subparsers.add_parser(
+        "edit", help="modify the current wallpaper"
+        )
+    subparser_edit.add_argument(
+        "-b", "--blur", type=int, choices=PERCENTAGE,
+        default=int(defaults["blur"]), metavar=PERCENT_META,
+        help="how blurry the image should be, as a percentage "
+        "(default: %(default)s)"
+        )
+    subparser_edit.add_argument(
+        "-g", "--grey", type=int, choices=PERCENTAGE,
+        default=int(defaults["grey"]), metavar=PERCENT_META,
+        help="how monochrome the image should be, as a percentage "
+        "(default: %(default)s)"
+        )
+    subparser_edit.add_argument(
+        "-d", "--dim", type=int, choices=PERCENTAGE,
+        default=int(defaults["dim"]), metavar=PERCENT_META,
+        help="how dark the image should be, as a percentage "
+        "(default: %(default)s)"
         )
 
     argparser.add_argument(
@@ -392,6 +436,9 @@ def get_previous_args(config_path):
     Args:
         config_path (str): Path where previous arguments are
             stored.
+
+    Returns:
+        dict: The previous arguments passed as key-value pairs.
 
     Raises:
         ValueError: If no previous arguments are available.
@@ -455,6 +502,45 @@ def list_wallpaper_info(args, image_data_path):
         print(f"{section}: {gram_list}")
 
 
+def blur(image, blurriness):
+    """Return a blurry PIL image."""
+    blur_filter = PIL.ImageFilter.GaussianBlur(blurriness)
+    new_image = image.filter(blur_filter)
+    return new_image
+
+
+def grey(image, greyness):
+    """Return a grey PIL image."""
+    enhancer = PIL.ImageEnhance.Color(image)
+    colour = (100 - greyness) / 100
+    new_image = enhancer.enhance(colour)
+    return new_image
+
+
+def dim(image, dimness):
+    """Return a dimmed PIL image."""
+    enhancer = PIL.ImageEnhance.Brightness(image)
+    brightness = (100 - dimness) / 100
+    new_image = enhancer.enhance(brightness)
+    return new_image
+
+
+def edit_wallpaper(path, blurriness, greyness, dimness):
+    """Make the saved wallpaper more/less blurry, grey and dim.
+
+    Args:
+        path (str): Location of image to be edited.
+        blurriness (int): Percentage of how blurry the image should be.
+        greyness (int): Percentage of how monochrome the image should be.
+        dimness (int): Percentage of how dim the image should be.
+    """
+    image = PIL.Image.open(path)
+    image = blur(image, blurriness)
+    image = grey(image, greyness)
+    image = dim(image, dimness)
+    image.save(path)
+
+
 def main(argv=None):
     """Set the wallpaper and schedule it to change.
 
@@ -485,8 +571,13 @@ def main(argv=None):
         set_booru_wallpaper(args, image_data_path)
     if args["subcommand"] == "list":
         list_wallpaper_info(args, image_data_path)
+    if args["subcommand"] == "edit":
+        data = read_json(image_data_path)
+        path = os.path.join(wallpaper_dir, f"wallpaper.{data['file_ext']}")
+        edit_wallpaper(path, args["blur"], args["grey"], args["dim"])
+        set_wallpaper(path)
 
-    # XXX: Why is this here?
+    # XXX: Why is this here? FIXME: scheduling
     # if args["duration"] != previous_args["duration"]:
     #     print("Scheduling next wallpaper change...")
     #     cron_path = os.path.join(image_data_dir, "schedule.tab")
@@ -501,7 +592,6 @@ def main(argv=None):
     #     tab.write()
     #     tab_view = tab.render()
     #     logger.debug(f"cron_job = {tab_view}")
-        # FIXME: scheduling
         # user = getpass.getuser()
         # cron_path = f"/var/spool/cron/crontabs/{user}"
         # try:
