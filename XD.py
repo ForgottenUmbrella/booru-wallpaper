@@ -341,7 +341,8 @@ def init_argparser(defaults):
     percent_meta = "{0 ... 100}"
     argparser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
-        "tagged image from a booru"
+        "tagged image from a booru",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
     subparsers = argparser.add_subparsers(dest="subcommand")
 
@@ -354,17 +355,15 @@ def init_argparser(defaults):
         )
     subparser_set.add_argument(
         "-i", "--imageboard", default=defaults["imageboard"],
-        help="a URL to source images from (default: %(default)s)"
+        help="a URL to source images from"
         )
     subparser_set.add_argument(
         "-r", "--retries", type=int, default=int(defaults["retries"]),
-        help="the number of times to retry getting the image "
-        "(default: %(default)s)"
+        help="the number of times to retry getting the image"
         )
     subparser_set.add_argument(
         "-s", "--scale", type=float, default=float(defaults["scale"]),
-        help="the minimum relative size of the image to the screen "
-        "(default: %(default)s)"
+        help="the minimum relative size of the image to the screen"
         )
     # TODO: move out of subparser
     subparser_set.add_argument(
@@ -386,7 +385,7 @@ def init_argparser(defaults):
             # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
             # ], default=[element.strip() for element in defaults["list"].split(",")],
         ], default="all",
-        help="the list to list (default: %(default)s)"
+        help="the information to print"
         )
 
     subparser_edit = subparsers.add_parser(
@@ -395,26 +394,23 @@ def init_argparser(defaults):
     subparser_edit.add_argument(
         "-b", "--blur", type=int, choices=percentage,
         default=int(defaults["blur"]), metavar=percent_meta,
-        help="how blurry the image should be, as a percentage "
-        "(default: %(default)s)"
+        help="how blurry the image should be, as a percentage"
         )
     subparser_edit.add_argument(
         "-g", "--grey", type=int, choices=percentage,
         default=int(defaults["grey"]), metavar=percent_meta,
-        help="how monochrome the image should be, as a percentage "
-        "(default: %(default)s)"
+        help="how monochrome the image should be, as a percentage"
         )
     subparser_edit.add_argument(
         "-d", "--dim", type=int, choices=percentage,
         default=int(defaults["dim"]), metavar=percent_meta,
-        help="how dark the image should be, as a percentage "
-        "(default: %(default)s)"
+        help="how dark the image should be, as a percentage"
         )
 
     argparser.add_argument(
         "-d", "--duration", type=int, choices=range(1, 25),
         default=int(defaults["duration"]), metavar="{1 ... 24}",
-        help="the duration of the wallpaper in hours (default: %(default)s)"
+        help="the duration of the wallpaper in hours"
         )
     argparser.add_argument(
         "-v", "--verbose", action="store_true",
