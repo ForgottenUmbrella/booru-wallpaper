@@ -571,47 +571,6 @@ def main(argv=None):
         edit_wallpaper(path, args["blur"], args["grey"], args["dim"])
         set_wallpaper(path)
 
-    # XXX: Why is this here? FIXME: scheduling
-    # if args["duration"] != previous_args["duration"]:
-    #     print("Scheduling next wallpaper change...")
-    #     cron_path = os.path.join(IMAGE_DATA_DIR, "schedule.tab")
-    #     tab = crontab.CronTab(tabfile=cron_path)
-    #     tab.remove_all()
-    #     command = f"{SCRIPT_PATH} set --next"
-    #     cron_job = tab.new(command)
-    #     if args["duration"] == 24:
-    #         cron_job.every().dom()
-    #     else:
-    #         cron_job.every(args["duration"]).hours()
-    #     tab.write()
-    #     tab_view = tab.render()
-    #     LOGGER.debug(f"cron_job = {tab_view}")
-        # user = getpass.getuser()
-        # cron_path = f"/var/spool/cron/crontabs/{user}"
-        # try:
-        #     with open(cron_path) as cron_file:
-        #         crontab = cron_file.readlines()
-        # except FileNotFoundError:
-        #     LOGGER.error("No cron_file.")
-        #     crontab = []
-        #
-        # for line_number, line in enumerate(crontab):
-        #     if "booru-wallpaper" in line:
-        #         break
-        # else:
-        #     line_number = len(crontab)
-        #
-        # if args["duration"] == 24:
-        #     duration = "0 * * * *"
-        # else:
-        #     duration = "0 */{args["duration"] * * *"
-        #
-        # command = f"{SCRIPT_PATH} set --next # booru-wallpaper"
-        # CRONTAB[LINE_NUMBER] = F"{DURATION} {COMMAND}\N"
-        # LOGGER.debug(f"crontab = {crontab}")
-        # with open(cron_path, "w") as cron_file:
-        #     cron_file.writelines(crontab)
-
 
 if __name__ == "__main__":
     main()
