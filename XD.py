@@ -339,30 +339,33 @@ def init_argparser(defaults):
     """Return an ArgumentParser with appropriate defaults."""
     percentage = range(0, 101)
     percent_meta = "{0 ... 100}"
-    argparser = argparse.ArgumentParser(
+
+    main_parser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
-    subparsers = argparser.add_subparsers(dest="subcommand")
+    main_parser.set_defaults(**defaults)
+    subparsers = main_parser.add_subparsers(dest="subcommand")
 
     subparser_set = subparsers.add_parser(
-        "set", help="get an image and set it as the wallpaper"
+        "set", help="get an image and set it as the wallpaper",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
+    subparser_set.set_defaults(**defaults)
     subparser_set.add_argument(
-        "tags", nargs="*",
+        "tags", nargs="*", default=argparse.SUPPRESS,
         help="a space-delimited list of tags the image must match"
         )
     subparser_set.add_argument(
-        "-i", "--imageboard", default=defaults["imageboard"],
-        help="a URL to source images from"
+        "-i", "--imageboard", help="a URL to source images from"
         )
     subparser_set.add_argument(
-        "-r", "--retries", type=int, default=int(defaults["retries"]),
+        "-r", "--retries", type=int,
         help="the number of times to retry getting the image"
         )
     subparser_set.add_argument(
-        "-s", "--scale", type=float, default=float(defaults["scale"]),
+        "-s", "--scale", type=float,
         help="the minimum relative size of the image to the screen"
         )
     # TODO: move out of subparser
@@ -373,8 +376,10 @@ def init_argparser(defaults):
         )
 
     subparser_list = subparsers.add_parser(
-        "list", help="print information about the current wallpaper"
+        "list", help="print information about the current wallpaper",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
+    subparser_list.set_defaults(**defaults)
     subparser_list.add_argument(
         "list", nargs="*", choices=[
             "all",
@@ -384,40 +389,38 @@ def init_argparser(defaults):
             "general",
             # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
             # ], default=[element.strip() for element in defaults["list"].split(",")],
-        ], default="all",
+        ],
         help="the information to print"
         )
 
     subparser_edit = subparsers.add_parser(
-        "edit", help="modify the current wallpaper"
+        "edit", help="modify the current wallpaper",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
+    subparser_edit.set_defaults(**defaults)
     subparser_edit.add_argument(
-        "-b", "--blur", type=int, choices=percentage,
-        default=int(defaults["blur"]), metavar=percent_meta,
+        "-b", "--blur", type=int, choices=percentage, metavar=percent_meta,
         help="how blurry the image should be, as a percentage"
         )
     subparser_edit.add_argument(
-        "-g", "--grey", type=int, choices=percentage,
-        default=int(defaults["grey"]), metavar=percent_meta,
+        "-g", "--grey", type=int, choices=percentage, metavar=percent_meta,
         help="how monochrome the image should be, as a percentage"
         )
     subparser_edit.add_argument(
-        "-d", "--dim", type=int, choices=percentage,
-        default=int(defaults["dim"]), metavar=percent_meta,
+        "-d", "--dim", type=int, choices=percentage, metavar=percent_meta,
         help="how dark the image should be, as a percentage"
         )
 
-    argparser.add_argument(
+    main_parser.add_argument(
         "-d", "--duration", type=int, choices=range(1, 25),
-        default=int(defaults["duration"]), metavar="{1 ... 24}",
-        help="the duration of the wallpaper in hours"
+        metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
         )
-    argparser.add_argument(
+    main_parser.add_argument(
         "-v", "--verbose", action="store_true",
         default=defaults.getboolean("verbose"), help="increase verbosity"
         )
 
-    return argparser
+    return main_parser
 
 
 def get_previous_args(config_path):
