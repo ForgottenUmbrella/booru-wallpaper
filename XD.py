@@ -70,6 +70,12 @@ def read_json(path):
     return data
 
 
+def write_json(path, data):
+    """Store a dictionary as a JSON file."""
+    with open(path, "w") as file:
+        json.dump(data, file, indent=4)
+
+
 def download(url, path):
     """Store a copy of a file from the internet."""
     print("Downloading image...")
@@ -347,7 +353,6 @@ def init_argparser(defaults):
         )
     main_parser.add_argument(
         "-v", "--verbose", action="store_true",
-        # default=defaults.getboolean("verbose"),
         help="increase verbosity"
         )
     subparsers = main_parser.add_subparsers(dest="subcommand")
@@ -375,7 +380,6 @@ def init_argparser(defaults):
     # TODO: move out of subparser
     subparser_set.add_argument(
         "-n", "--next", action="store_true",
-        # default=defaults.getboolean("next"),
         help="get the next wallpaper using the previous settings"
         )
 
@@ -391,9 +395,9 @@ def init_argparser(defaults):
             "character",
             "copyright",
             "general",
-            # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
-            # ], default=[element.strip() for element in defaults["list"].split(",")],
         ],
+        # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
+        # default=[element.strip() for element in defaults["list"].split(",")],
         help="the information to print"
         )
 
@@ -418,12 +422,13 @@ def init_argparser(defaults):
     return main_parser
 
 
-def set_booru_wallpaper(args, IMAGE_DATA_PATH):
+def get_set_booru_wallpaper(args):
     """Set the wallpaper to an image from a booru and write data."""
     if args["next"]:
         LOGGER.debug("--next called")
         # try:
         args = read_json(CONFIG_PATH)
+        LOGGER.debug(f"args = {args}")
         # except (FileNotFoundError, json.JSONDecodeError):
         #     LOGGER.error("No prev_config file.")
         #     raise ValueError(
@@ -436,13 +441,11 @@ def set_booru_wallpaper(args, IMAGE_DATA_PATH):
         )
     set_wallpaper(path)
 
-    with open(IMAGE_DATA_PATH, "w") as data_file:
-        json.dump(data, data_file, indent=4, separators=(", ", ": "))
-    with open(CONFIG_PATH, "w") as config_file:
-        json.dump(args, config_file, indent=4, separators=(", ", ": "))
+    write_json(IMAGE_DATA_PATH, data)
+    write_json(CONFIG_PATH, args)
 
 
-def list_wallpaper_info(args, IMAGE_DATA_PATH):
+def list_wallpaper_info(args):
     """Print requested information about the current wallpaper."""
     if "all" in args["list"]:
         args["list"] = [
@@ -530,9 +533,9 @@ def main(argv=None):
         sys.exit(1)
 
     if args["subcommand"] == "set":
-        set_booru_wallpaper(args, IMAGE_DATA_PATH)
+        get_set_booru_wallpaper(args)
     if args["subcommand"] == "list":
-        list_wallpaper_info(args, IMAGE_DATA_PATH)
+        list_wallpaper_info(args)
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
         path = os.path.join(WALLPAPERS_DIR, f"wallpaper.{data['file_ext']}")
