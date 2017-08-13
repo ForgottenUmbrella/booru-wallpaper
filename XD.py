@@ -7,6 +7,7 @@ import subprocess
 import argparse
 import configparser
 import json
+import textwrap
 import ctypes
 import logging
 
@@ -242,6 +243,14 @@ def set_linux_wallpaper(path):
         command = f"enlightenment_remote -desktop-bg-add 0 0 0 0 {path}"
     else:
         command = f"feh --bg-scale {path}"
+        print(textwrap.fill(
+            "If you're using a standalone WM like i3 or awesome, make sure to "
+            "configure it to use feh as the wallpaper source."
+            ))
+        print(textwrap.fill(
+            "For example, if you're using i3, your ~/.config/i3/config should "
+            "contain the line, 'exec_always --no-startup-id ~/.fehbg'."
+            ))
     subprocess.call(command, shell=True)
 
 
