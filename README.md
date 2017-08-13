@@ -15,12 +15,13 @@ extensions, but I'll wait and see if the original developer is making any
 progress before doing so.
 
 ## Requirements
-* Python 3.6
-* Pillow
-* Tk
-* Requests
+* Python >= 3.6
+* Pillow module
+* Tk module
+* Requests module
+* Feh (if using a standalone window manager)
 
-You can install the missing modules with, `pip install --user MODULE_NAME`.
+You can install the missing modules with `pip install --user MODULE_NAME`.
 
 ## Usage
 Call the script from the terminal with the `--help` flag for usage.
