@@ -28,6 +28,16 @@ LOG_PATH = os.path.join(ROOT_DIR, "log.log")
 LOGGER = logging.getLogger(__name__)
 
 
+def wait_warmly(message, i):
+    """Print a spinning cursor with a message.
+
+    Remember to print a newline when finished looping.
+    """
+    chars = r"-\|/"
+    char = chars[i % len(chars)]
+    print(char, message, end="\r")
+
+
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
     """Return a split and (perhaps more grammatical) rejoined string.
 
@@ -78,11 +88,11 @@ def write_json(path, data):
 
 def download(url, path):
     """Store a copy of a file from the internet."""
-    print("Downloading image...")
-    response = requests.get(url, stream=True)
-    with open(path, "wb") as file:
-        for chunk in response.iter_content(chunk_size=128):
+    with requests.get(url, stream=True) as response, open(path, "wb") as file:
+        for i, chunk in enumerate(response.iter_content(chunk_size=128)):
+            wait_warmly("Downloading...", i)
             file.write(chunk)
+        print()
 
 
 def get_json(url, params):
@@ -99,15 +109,15 @@ def get_json(url, params):
     #     RequestError: If the request is unsuccessful.
     #     ValueError: If no JSON data is available from `url`.
     """
-    success = range(100, 400)
+    # success = range(100, 400)
     LOGGER.debug(f"GET url = {url}")
     response = requests.get(url, params=params)
     status = response.status_code
     LOGGER.debug(f"status = {status}")
-    succeeded = status in success
-    if succeeded:
+    # succeeded = status in success
+    # if succeeded:
         # try:
-        json_data = response.json()
+    json_data = response.json()
         # except json.JSONDecodeError as original_error:
         #     LOGGER.error(original_error)
         #     raise ValueError(f"{url} does not have JSON data.")
@@ -190,6 +200,7 @@ def download_image(tags, imageboard, attempts, scale):
     # TODO: Use default name. /wallpaper.
     filename = f"wallpaper.{extension}"
     path = os.path.join(WALLPAPERS_DIR, filename)
+    # print("Downloading image")
     download(url, path)
     return path, data
 
