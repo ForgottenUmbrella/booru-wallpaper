@@ -233,7 +233,7 @@ def remove_old_wallpapers(limit):
 def set_linux_wallpaper(path):
     """Set the desktop wallpaper on GNU/Linux."""
     desktop = os.environ.get("XDG_CURRENT_DESKTOP").lower()
-    if desktop in {"gnome", "x-cinnamon", "unity", "pantheon", "budgie:gnome"}:
+    if desktop in ("gnome", "x-cinnamon", "unity", "pantheon", "budgie:gnome"):
         command = (
             "gsettings set org.gnome.desktop.background picture-uri "
             f"file://{path}"
