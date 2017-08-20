@@ -475,7 +475,8 @@ def num_keep_type(x):
 
     Used for validating the number of wallpapers to keep.
     """
-    if x <= 0 or x != int(x):
+    x = int(x)
+    if x <= 0:
         raise argparse.ArgumentTypeError("Minimum number of wallpapers is 1")
     return x
 
