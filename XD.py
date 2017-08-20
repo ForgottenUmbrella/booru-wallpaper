@@ -397,7 +397,7 @@ def init_argparser(defaults):
         metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
         )
     main_parser.add_argument(
-        "-k", "--keep", type=num_keep_type, metavar="{1 ...}",
+        "-k", "--keep", type=wallpaper_num, metavar="{1 ...}",
         help="the number of wallpapers to keep"
         )
     main_parser.add_argument(
@@ -470,7 +470,7 @@ def init_argparser(defaults):
     return main_parser
 
 
-def num_keep_type(x):
+def wallpaper_num(x):
     """Return a number if it is natural.
 
     Used for validating the number of wallpapers to keep.
