@@ -30,14 +30,12 @@ LOG_PATH = os.path.join(ROOT_DIR, "log.log")
 LOGGER = logging.getLogger(__name__)
 
 
-def wait_warmly(message, i):
-    """Print a spinning cursor with a message.
-
-    Remember to print a newline when finished looping.
-    """
+def wait_warmly():
+    """Yield parts of a spinning cursor."""
     chars = r"-\|/"
-    char = chars[i % len(chars)]
-    print(char, message, end="\r")
+    while True:
+        for c in chars:
+            yield c
 
 
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
@@ -91,8 +89,8 @@ def write_json(path, data):
 def download(url, path):
     """Store a copy of a file from the internet."""
     with requests.get(url, stream=True) as response, open(path, "wb") as file:
-        for i, chunk in enumerate(response.iter_content(chunk_size=128)):
-            wait_warmly("Downloading...", i)
+        for chunk in response.iter_content(chunk_size=128):
+            print(wait_warmly(), "Downloading...", end="\r")
             file.write(chunk)
         print()
 
@@ -366,7 +364,7 @@ class XDConfigParser(configparser.ConfigParser):
             "grey": 0,
             "dim": 0,
             "duration": 24,
-            "keep": 1,
+            "keep": 2,
             "verbose": False,
         }
         with open(self.path, "w") as defaults_file:
