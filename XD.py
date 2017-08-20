@@ -2,6 +2,7 @@
 # coding=utf-8
 """Another version. Features added when I feel like it."""
 import sys
+import os
 import os.path
 import subprocess
 import argparse
@@ -181,6 +182,11 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
     raise ValueError("No images were large enough.")
 
 
+def image_name(image_data):
+    """Return the filename of a booru image."""
+    return image_data["file_url"].split("/")[-1]
+
+
 def download_image(tags, imageboard, attempts, scale):
     """Download an image and return its path and data.
 
@@ -197,13 +203,31 @@ def download_image(tags, imageboard, attempts, scale):
         tags, imageboard, attempts=attempts, scale=scale
         )
     url = imageboard + data["file_url"]
-    extension = data["file_ext"]
-    # TODO: Use default name. /wallpaper.
-    filename = f"wallpaper.{extension}"
+    filename = image_name(data)
     path = os.path.join(WALLPAPERS_DIR, filename)
     # print("Downloading image")
     download(url, path)
     return path, data
+
+
+def sorted_files(directory):
+    """Return a sorted list of files  by modified date."""
+    files = []
+    for file in os.listdir(directory):
+        path = os.path.join(directory, file)
+        files.append(path)
+    files.sort(key=os.path.getmtime)
+    return files
+
+
+def remove_old_wallpapers(limit):
+    """Delete old wallpapers if there are too many in the folder."""
+    wallpapers = sorted_files(WALLPAPERS_DIR)
+    num_extra = len(wallpapers) - limit
+    if num_extra > 0:
+        print("Removing old wallpapers...")
+        for wallpaper in wallpapers[:num_extra]:
+            os.remove(wallpaper)
 
 
 def set_linux_wallpaper(path):
@@ -342,6 +366,7 @@ class XDConfigParser(configparser.ConfigParser):
             "grey": 0,
             "dim": 0,
             "duration": 24,
+            "keep": 1,
             "verbose": False,
         }
         with open(self.path, "w") as defaults_file:
@@ -372,6 +397,10 @@ def init_argparser(defaults):
         metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
         )
     main_parser.add_argument(
+        "-k", "--keep", type=num_keep_type, metavar="{1 ...}",
+        help="the number of wallpapers to keep"
+        )
+    main_parser.add_argument(
         "-v", "--verbose", action="store_true",
         help="increase verbosity"
         )
@@ -397,7 +426,6 @@ def init_argparser(defaults):
         "-s", "--scale", type=float,
         help="the minimum relative size of the image to the screen"
         )
-    # TODO: move out of subparser
     subparser_set.add_argument(
         "-n", "--next", action="store_true",
         help="get the next wallpaper using the previous settings"
@@ -442,6 +470,16 @@ def init_argparser(defaults):
     return main_parser
 
 
+def num_keep_type(x):
+    """Return a number if it is natural.
+
+    Used for validating the number of wallpapers to keep.
+    """
+    if x <= 0 or x != int(x):
+        raise argparse.ArgumentTypeError("Minimum number of wallpapers is 1")
+    return x
+
+
 def get_set_booru_wallpaper(args):
     """Set the wallpaper to an image from a booru and write data."""
     if args["next"]:
@@ -459,6 +497,7 @@ def get_set_booru_wallpaper(args):
     path, data = download_image(
         args["tags"], args["imageboard"], args["retries"] + 1, args["scale"]
         )
+    remove_old_wallpapers(args["keep"])
     set_wallpaper(path)
 
     write_json(IMAGE_DATA_PATH, data)
@@ -558,7 +597,8 @@ def main(argv=None):
         list_wallpaper_info(args)
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
-        path = os.path.join(WALLPAPERS_DIR, f"wallpaper.{data['file_ext']}")
+        filename = image_name(data)
+        path = os.path.join(WALLPAPERS_DIR, filename)
         edit_wallpaper(path, args["blur"], args["grey"], args["dim"])
         set_wallpaper(path)
 
