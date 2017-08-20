@@ -89,8 +89,10 @@ def write_json(path, data):
 def download(url, path):
     """Store a copy of a file from the internet."""
     with requests.get(url, stream=True) as response, open(path, "wb") as file:
-        for chunk in response.iter_content(chunk_size=128):
-            print(wait_warmly(), "Downloading...", end="\r")
+        chunks = response.iter_content(chunk_size=128)
+        spinner = wait_warmly()
+        for chunk, cursor in zip(chunks, spinner):
+            print(cursor, "Downloading...", end="\r")
             file.write(chunk)
         print()
 
