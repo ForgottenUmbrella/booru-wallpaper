@@ -1,9 +1,2 @@
-__pycache__
-*.ini
-*.json
-*.log
 *.html
-wallpaper.*
-*~
-.ropeproject
-tags
+wallpaper/
