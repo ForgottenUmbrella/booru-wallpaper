@@ -33,7 +33,7 @@ _DEBUG_HANDLER = logging.FileHandler(LOG_PATH, mode="w")
 _DEBUG_HANDLER.setLevel(logging.DEBUG)
 _DEBUG_FORMATTER = logging.Formatter(
     "{name}:{levelname}: {message}", style="{"
-    )
+)
 _DEBUG_HANDLER.setFormatter(_DEBUG_FORMATTER)
 _TERMINAL_HANDLER = logging.StreamHandler()
 _TERMINAL_HANDLER.setLevel(logging.INFO)
@@ -169,7 +169,7 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         "limit": 1,
         "tags": " ".join(tags),
         "random": "true",
-        }
+    }
     (screen_height, screen_width) = screen_dimensions()
     for attempt in range(attempts):
         # `attempt` is zero-based, but humans aren't.
@@ -189,7 +189,7 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         good_fit = (
             data["image_height"] >= screen_height * scale and
             data["image_width"] >= screen_width * scale
-            )
+        )
         if good_fit:
             return data
     raise ValueError("No images were large enough.")
@@ -214,7 +214,7 @@ def download_image(tags, imageboard, attempts, scale):
     """
     data = get_image_data(
         tags, imageboard, attempts=attempts, scale=scale
-        )
+    )
     url = imageboard + data["file_url"]
     filename = image_name(data)
     path = os.path.join(WALLPAPERS_DIR, filename)
@@ -250,12 +250,12 @@ def set_linux_wallpaper(path):
         command = (
             "gsettings set org.gnome.desktop.background picture-uri "
             f"file://{path}"
-            )
+        )
     elif desktop == "mate":
         command = (
             "gsettings set org.mate.background picture-uri "
             f"file://{path}"
-            )
+        )
     elif desktop == "kde":
         command = (
             "qdbus org.kde.plasmashell /PlasmaShell "
@@ -270,12 +270,12 @@ def set_linux_wallpaper(path):
             f"d.writeConfig('Image', 'file://{path}');"
             "}"
             "\""
-            )
+        )
     elif desktop == "xfce":
         command = (
             "xfconf-query -c xfce4-desktop -p"
             f"$xfce_desktop_prop_prefix/workspace1/last-image -s {path}"
-            )
+        )
     elif desktop == "enlightenment":
         command = f"enlightenment_remote -desktop-bg-add 0 0 0 0 {path}"
     else:
@@ -283,11 +283,11 @@ def set_linux_wallpaper(path):
         print(textwrap.fill(
             "If you're using a standalone WM like i3 or awesome, make sure to "
             "configure it to use feh as the wallpaper source."
-            ))
+        ))
         print(textwrap.fill(
             "For example, if you're using i3, your ~/.config/i3/config should "
             "contain the line, 'exec_always --no-startup-id ~/.fehbg'."
-            ))
+        ))
     subprocess.call(command, shell=True)
 
 
@@ -298,7 +298,7 @@ def set_windows_wallpaper(path):
     irrelevant_param = 0
     ctypes.windll.user32.SystemParametersInfoW(
         spi_setdesktopwallpaper, irrelevant_param, path, spif_sendchange
-        )
+    )
 
 
 def set_mac_wallpaper(path):
@@ -306,7 +306,7 @@ def set_mac_wallpaper(path):
     subprocess.call(
         "tell application 'Finder' to set desktop picture to POSIX "
         f"file {path}", shell=True
-        )
+    )
 
 
 def set_wallpaper(path):
@@ -347,29 +347,27 @@ class XDConfigParser(configparser.ConfigParser):
         config_log(self)
 
     def _create_defaults(self):
-        self.read_dict(
-            {
-                "main": {
-                    "duration": 24,
-                    "keep": 2,
-                    "verbose": False,
-                    },
-                "set": {
-                    "imageboard": "https://danbooru.donmai.us",
-                    "retries": 2,
-                    "scale": 0.0,
-                    "next": False,
-                    },
-                "list": {
-                    "list": "all",
-                    },
-                "edit": {
-                    "blur": 0,
-                    "grey": 0,
-                    "dim": 0,
-                    }
-                }
-            )
+        self.read_dict({
+            "main": {
+                "duration": 24,
+                "keep": 2,
+                "verbose": False,
+            },
+            "set": {
+                "imageboard": "https://danbooru.donmai.us",
+                "retries": 2,
+                "scale": 0.0,
+                "next": False,
+            },
+            "list": {
+                "list": "all",
+            },
+            "edit": {
+                "blur": 0,
+                "grey": 0,
+                "dim": 0,
+            }
+        })
         with open(self.path, "w") as defaults_file:
             self.write(defaults_file)
 
@@ -408,51 +406,51 @@ def init_argparser(defaults):
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
-        )
+    )
     main_parser.set_defaults(**defaults["main"])
     main_parser.add_argument(
         "-d", "--duration", type=int, choices=range(1, 25),
         metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
-        )
+    )
     main_parser.add_argument(
         "-k", "--keep", type=wallpaper_num, metavar="{1 ...}",
         help="the number of wallpapers to keep"
-        )
+    )
     main_parser.add_argument(
         "-v", "--verbose", action="store_true",
         help="increase verbosity"
-        )
+    )
     subparsers = main_parser.add_subparsers(dest="subcommand")
 
     subparser_set = subparsers.add_parser(
         "set", help="get an image and set it as the wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
-        )
+    )
     subparser_set.set_defaults(**defaults["set"])
     subparser_set.add_argument(
         "tags", nargs="*", default=argparse.SUPPRESS,
         help="a space-delimited list of tags the image must match"
-        )
+    )
     subparser_set.add_argument(
         "-i", "--imageboard", help="a URL to source images from"
-        )
+    )
     subparser_set.add_argument(
         "-r", "--retries", type=int,
         help="the number of times to retry getting the image"
-        )
+    )
     subparser_set.add_argument(
         "-s", "--scale", type=float,
         help="the minimum relative size of the image to the screen"
-        )
+    )
     subparser_set.add_argument(
         "-n", "--next", action="store_true",
         help="get the next wallpaper using the previous settings"
-        )
+    )
 
     subparser_list = subparsers.add_parser(
         "list", help="print information about the current wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
-        )
+    )
     subparser_list.set_defaults(**defaults["list"])
     subparser_list.add_argument(
         "list", nargs="*", choices=[
@@ -465,25 +463,25 @@ def init_argparser(defaults):
         # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
         # default=[element.strip() for element in defaults["list"].split(",")],
         help="the information to print"
-        )
+    )
 
     subparser_edit = subparsers.add_parser(
         "edit", help="modify the current wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
-        )
+    )
     subparser_edit.set_defaults(**defaults["edit"])
     subparser_edit.add_argument(
         "-b", "--blur", type=int, choices=percentage, metavar=percent_meta,
         help="how blurry the image should be, as a percentage"
-        )
+    )
     subparser_edit.add_argument(
         "-g", "--grey", type=int, choices=percentage, metavar=percent_meta,
         help="how monochrome the image should be, as a percentage"
-        )
+    )
     subparser_edit.add_argument(
         "-d", "--dim", type=int, choices=percentage, metavar=percent_meta,
         help="how dark the image should be, as a percentage"
-        )
+    )
 
     return main_parser
 
@@ -508,7 +506,7 @@ def get_set_booru_wallpaper(args):
 
     path, data = download_image(
         args["tags"], args["imageboard"], args["retries"] + 1, args["scale"]
-        )
+    )
     remove_old_wallpapers(args["keep"])
     set_wallpaper(path)
 
@@ -607,7 +605,7 @@ def main(argv=None):
             print(textwrap.fill(
                 "There are no previous arguments to get another wallpaper. "
                 "Please set some arguments."
-                ))
+            ))
             sys.exit(1)
     if args["subcommand"] == "list":
         try:
@@ -616,7 +614,7 @@ def main(argv=None):
             print(textwrap.fill(
                 "There is no wallpaper to list data about. "
                 "Please set some arguments."
-                ))
+            ))
             sys.exit(1)
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
