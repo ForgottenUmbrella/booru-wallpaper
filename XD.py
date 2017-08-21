@@ -42,6 +42,17 @@ _TERMINAL_HANDLER.setFormatter(_TERMINAL_FORMATTER)
 LOGGER.addHandler(_DEBUG_HANDLER)
 LOGGER.addHandler(_TERMINAL_HANDLER)
 
+TAG_STRINGS = [
+    "artist",
+    "character",
+    "copyright",
+    "general",
+]
+OTHER_INFO = [
+    "id",
+]
+ALL_INFO = TAG_STRINGS + OTHER_INFO
+
 
 def sorted_files(directory):
     """Return a sorted list of files by modified date."""
@@ -457,13 +468,7 @@ def init_argparser(defaults):
     )
     subparser_list.set_defaults(**defaults["list"])
     subparser_list.add_argument(
-        "list", nargs="*", choices=[
-            "all",
-            "artist",
-            "character",
-            "copyright",
-            "general",
-        ],
+        "list", nargs="*", choices=ALL_INFO + ["all"],
         # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
         # default=[element.strip() for element in defaults["list"].split(",")],
         help="the information to print"
@@ -522,19 +527,23 @@ def get_set_booru_wallpaper(args):
 def list_booru_wallpaper_info(args):
     """Print requested information about the current wallpaper."""
     if "all" in args["list"]:
-        args["list"] = [
-            "artist",
-            "character",
-            "copyright",
-            "general",
-        ]
+        args["list"] = ALL_INFO
     data = read_json(IMAGE_DATA_PATH)
     LOGGER.debug(f"(list) data = {data}")
     for listed_data in args["list"]:
-        section = listed_data.capitalize()
-        key = f"tag_string_{listed_data}"
-        gram_list = gram_join(data[key])
-        print(f"{section}: {gram_list}")
+        if listed_data == "id":
+            section = "ID"
+        else:
+            section = listed_data.capitalize()
+        if listed_data in TAG_STRINGS:
+            key = f"tag_string_{listed_data}"
+        else:
+            key = listed_data
+        gram_list = gram_join(str(data[key]), final_joiner=", ")
+        print(textwrap.fill(
+            f"{section}: {gram_list}",
+            subsequent_indent=" " * len(section + ": ")
+        ))
 
 
 def blur(image, blurriness):
