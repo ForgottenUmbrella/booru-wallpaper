@@ -43,6 +43,16 @@ LOGGER.addHandler(_DEBUG_HANDLER)
 LOGGER.addHandler(_TERMINAL_HANDLER)
 
 
+def sorted_files(directory):
+    """Return a sorted list of files by modified date."""
+    files = []
+    for file in os.listdir(directory):
+        path = os.path.join(directory, file)
+        files.append(path)
+    files.sort(key=os.path.getmtime)
+    return files
+
+
 def wait_warmly():
     """Yield parts of a spinning cursor."""
     chars = r"-\|/"
@@ -101,10 +111,10 @@ def write_json(path, data):
 
 def download(url, path):
     """Store a copy of a file from the internet."""
+    spinner = wait_warmly()
     with requests.get(url, stream=True) as response, open(path, "wb") as file:
         chunks = response.iter_content(chunk_size=128)
-        spinner = wait_warmly()
-        for chunk, cursor in zip(chunks, spinner):
+        for cursor, chunk in zip(spinner, chunks):
             print(cursor, "Downloading...", end="\r")
             file.write(chunk)
         print()
@@ -152,8 +162,8 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         imageboard (str): URL of the website to get images from.
         attempts (int): Number of times to try to get a valid image.
             Defaults to 1.
-        scale (float): Relative size of the image in relation to the
-            screen. Defaults to 1.0.
+        scale (float): Relative image in relation to the screen.
+            Defaults to 1.0.
 
     Returns:
         dict: Data stored about the retrieved image.
@@ -195,19 +205,24 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
     raise ValueError("No images were large enough.")
 
 
-def image_name(image_data):
+def booru_image_name(image_data):
     """Return the filename of a booru image."""
     return image_data["file_url"].split("/")[-1]
 
 
-def download_image(tags, imageboard, attempts, scale):
+def download_booru_image(
+        tags, imageboard, attempts=1, scale=1.0, directory=WALLPAPERS_DIR):
     """Download an image and return its path and data.
 
     Args:
         tags ([str]): Labels the image must match.
         imageboard (str): URL of website to download from.
-        attempts (int): How many times to try to get a good image.
+        attempts (int): Number of times to try to get a valid image.
+            Defaults to 1.
         scale (float): Relative image size in relation to the screen.
+            Defaults to 1.0.
+        directory (str): Path of folder to download to.
+            Defaults to the `WALLPAPERS_DIR` constant.
 
     Returns:
         tuple: The path of the image and its metadata.
@@ -216,26 +231,15 @@ def download_image(tags, imageboard, attempts, scale):
         tags, imageboard, attempts=attempts, scale=scale
     )
     url = imageboard + data["file_url"]
-    filename = image_name(data)
-    path = os.path.join(WALLPAPERS_DIR, filename)
-    # print("Downloading image")
+    filename = booru_image_name(data)
+    path = os.path.join(directory, filename)
     download(url, path)
     return path, data
 
 
-def sorted_files(directory):
-    """Return a sorted list of files  by modified date."""
-    files = []
-    for file in os.listdir(directory):
-        path = os.path.join(directory, file)
-        files.append(path)
-    files.sort(key=os.path.getmtime)
-    return files
-
-
-def remove_old_wallpapers(limit):
+def remove_old_wallpapers(limit, directory=WALLPAPERS_DIR):
     """Delete old wallpapers if there are too many in the folder."""
-    wallpapers = sorted_files(WALLPAPERS_DIR)
+    wallpapers = sorted_files(directory)
     num_extra = len(wallpapers) - limit
     if num_extra > 0:
         print("Removing old wallpapers...")
@@ -384,7 +388,7 @@ class XDConfigParser(configparser.ConfigParser):
 def config_log(config):
     """Log a ConfigParser-like object's sections and options."""
     for section, _ in config.items():
-        LOGGER.debug(f"config_parser['{section}']:")
+        LOGGER.debug(f"['{section}']:")
         for key, value in config[section].items():
             LOGGER.debug(f"{key} = {repr(value)}")
 
@@ -504,8 +508,9 @@ def get_set_booru_wallpaper(args):
         args = read_json(CONFIG_PATH)
         LOGGER.debug(f"args = {args}")
 
-    path, data = download_image(
-        args["tags"], args["imageboard"], args["retries"] + 1, args["scale"]
+    path, data = download_booru_image(
+        args["tags"], args["imageboard"], attempts=args["retries"] + 1,
+        scale=args["scale"]
     )
     remove_old_wallpapers(args["keep"])
     set_wallpaper(path)
@@ -514,7 +519,7 @@ def get_set_booru_wallpaper(args):
     write_json(CONFIG_PATH, args)
 
 
-def list_wallpaper_info(args):
+def list_booru_wallpaper_info(args):
     """Print requested information about the current wallpaper."""
     if "all" in args["list"]:
         args["list"] = [
@@ -609,7 +614,7 @@ def main(argv=None):
             sys.exit(1)
     if args["subcommand"] == "list":
         try:
-            list_wallpaper_info(args)
+            list_booru_wallpaper_info(args)
         except FileNotFoundError:
             print(textwrap.fill(
                 "There is no wallpaper to list data about. "
@@ -618,7 +623,7 @@ def main(argv=None):
             sys.exit(1)
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
-        filename = image_name(data)
+        filename = booru_image_name(data)
         path = os.path.join(WALLPAPERS_DIR, filename)
         edit_wallpaper(path, args["blur"], args["grey"], args["dim"])
         set_wallpaper(path)
