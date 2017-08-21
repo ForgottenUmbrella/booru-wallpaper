@@ -25,9 +25,22 @@ IMAGE_DATA_PATH = os.path.join(DATA_DIR, "image_data.json")
 DEFAULTS_PATH = os.path.join(DATA_DIR, "defaults.ini")
 CONFIG_PATH = os.path.join(DATA_DIR, "prev_config.json")
 WALLPAPERS_DIR = os.path.join(ROOT_DIR, "wallpapers")
-LOG_PATH = os.path.join(ROOT_DIR, "log.log")
+LOG_PATH = os.path.join(ROOT_DIR, "log")
 
 LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.DEBUG)
+_DEBUG_HANDLER = logging.FileHandler(LOG_PATH, mode="w")
+_DEBUG_HANDLER.setLevel(logging.DEBUG)
+_DEBUG_FORMATTER = logging.Formatter(
+    "{name}:{levelname}: {message}", style="{"
+    )
+_DEBUG_HANDLER.setFormatter(_DEBUG_FORMATTER)
+_TERMINAL_HANDLER = logging.StreamHandler()
+_TERMINAL_HANDLER.setLevel(logging.INFO)
+_TERMINAL_FORMATTER = logging.Formatter("{levelname}: {message}", style="{")
+_TERMINAL_HANDLER.setFormatter(_TERMINAL_FORMATTER)
+LOGGER.addHandler(_DEBUG_HANDLER)
+LOGGER.addHandler(_TERMINAL_HANDLER)
 
 
 def wait_warmly():
@@ -120,8 +133,8 @@ def get_json(url, params):
     # if succeeded:
         # try:
     json_data = response.json()
-        # except json.JSONDecodeError as original_error:
-        #     LOGGER.error(original_error)
+        # except json.JSONDecodeError as ex:
+        #     LOGGER.error(ex)
         #     raise ValueError(f"{url} does not have JSON data.")
     # else:
         # raise RequestError(f"Response returned code {status}.")
@@ -164,14 +177,14 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         print(f"Attempt {real_attempt}: Getting image...")
         # try:
         data = get_json(url, params)[0]
-        # except urllib.error.HTTPError as original_error:
-        #     LOGGER.error(original_error)
+        # except urllib.error.HTTPError as ex:
+        #     LOGGER.error(ex)
         #     raise ValueError("Too many tags.") from None
-        # except urllib.error.URLError as original_error:
-        #     LOGGER.error(original_error)
+        # except urllib.error.URLError as ex:
+        #     LOGGER.error(ex)
         #     raise OSError("No internet connection.") from None
-        # except ValueError as original_error:
-        #     LOGGER.error(original_error)
+        # except ValueError as ex:
+        #     LOGGER.error(ex)
         #     raise ValueError("Invalid/conflicting tags.") from None
         good_fit = (
             data["image_height"] >= screen_height * scale and
@@ -319,26 +332,6 @@ def set_wallpaper(path):
         raise NotImplementedError("OS is not yet supported.")
 
 
-def init_logger(verbose):
-    """Initialise the global logger's properties."""
-    LOGGER.setLevel(logging.DEBUG)
-    debug_handler = logging.FileHandler(LOG_PATH, mode="w")
-    debug_handler.setLevel(logging.DEBUG)
-    debug_formatter = logging.Formatter(
-        "{name}:{levelname}: {message}", style="{"
-        )
-    debug_handler.setFormatter(debug_formatter)
-    terminal_handler = logging.StreamHandler()
-    if verbose:
-        terminal_handler.setLevel(logging.DEBUG)
-    else:
-        terminal_handler.setLevel(logging.INFO)
-    terminal_formatter = logging.Formatter("{levelname}: {message}", style="{")
-    terminal_handler.setFormatter(terminal_formatter)
-    LOGGER.addHandler(debug_handler)
-    LOGGER.addHandler(terminal_handler)
-
-
 class XDConfigParser(configparser.ConfigParser):
     """ConfigParser for this program."""
     def __init__(self, path):
@@ -349,28 +342,53 @@ class XDConfigParser(configparser.ConfigParser):
                 self.read_file(defaults_file)
         except FileNotFoundError:
             LOGGER.warning("No defaults.ini file.")
-        if not self["DEFAULT"]:
+        if not self.has_section("main"):
             self._create_defaults()
-        LOGGER.debug("config_parser['DEFAULT']:")
-        for key, value in self["DEFAULT"].items():
-            LOGGER.debug(f"{key} = {repr(value)}")
+        config_log(self)
 
     def _create_defaults(self):
-        self["DEFAULT"] = {
-            "imageboard": "https://danbooru.donmai.us",
-            "retries": 2,
-            "scale": 0.0,
-            "next": False,
-            "list": "all",
-            "blur": 0,
-            "grey": 0,
-            "dim": 0,
-            "duration": 24,
-            "keep": 2,
-            "verbose": False,
-        }
+        self.read_dict(
+            {
+                "main": {
+                    "duration": 24,
+                    "keep": 2,
+                    "verbose": False,
+                    },
+                "set": {
+                    "imageboard": "https://danbooru.donmai.us",
+                    "retries": 2,
+                    "scale": 0.0,
+                    "next": False,
+                    },
+                "list": {
+                    "list": "all",
+                    },
+                "edit": {
+                    "blur": 0,
+                    "grey": 0,
+                    "dim": 0,
+                    }
+                }
+            )
         with open(self.path, "w") as defaults_file:
             self.write(defaults_file)
+
+    def as_dict(self):
+        """Return a dictionary representation of the ConfigParser."""
+        dictionary = {}
+        for section in self.sections():
+            dictionary[section] = {}
+            for option in self.options(section):
+                dictionary[section][option] = self.get(section, option)
+        return dictionary
+
+
+def config_log(config):
+    """Log a ConfigParser-like object's sections and options."""
+    for section, _ in config.items():
+        LOGGER.debug(f"config_parser['{section}']:")
+        for key, value in config[section].items():
+            LOGGER.debug(f"{key} = {repr(value)}")
 
 
 def init_argparser(defaults):
@@ -378,20 +396,20 @@ def init_argparser(defaults):
     percentage = range(0, 101)
     percent_meta = "{0 ... 100}"
 
-    # Cast booleans, since configparser doesn't. `parse_args` method has
-    # undefined behaviour when both `set_defaults` and the `default`
-    # argument are passed, so the defaults need to be modified in-place.
-    real_defaults = dict(defaults)
-    for key in ("verbose", "next"):
-        real_defaults[key] = defaults.getboolean(key)
-    defaults = real_defaults
+    # Cast Booleans, since configparser doesn't.
+    config_log(defaults)
+    dict_defaults = defaults.as_dict()
+    dict_defaults["main"]["verbose"] = defaults["main"].getboolean("verbose")
+    dict_defaults["set"]["next"] = defaults["set"].getboolean("next")
+    defaults = dict_defaults
+    config_log(defaults)
 
     main_parser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
-    main_parser.set_defaults(**defaults)
+    main_parser.set_defaults(**defaults["main"])
     main_parser.add_argument(
         "-d", "--duration", type=int, choices=range(1, 25),
         metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
@@ -410,7 +428,7 @@ def init_argparser(defaults):
         "set", help="get an image and set it as the wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
-    subparser_set.set_defaults(**defaults)
+    subparser_set.set_defaults(**defaults["set"])
     subparser_set.add_argument(
         "tags", nargs="*", default=argparse.SUPPRESS,
         help="a space-delimited list of tags the image must match"
@@ -435,7 +453,7 @@ def init_argparser(defaults):
         "list", help="print information about the current wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
-    subparser_list.set_defaults(**defaults)
+    subparser_list.set_defaults(**defaults["list"])
     subparser_list.add_argument(
         "list", nargs="*", choices=[
             "all",
@@ -453,7 +471,7 @@ def init_argparser(defaults):
         "edit", help="modify the current wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
-    subparser_edit.set_defaults(**defaults)
+    subparser_edit.set_defaults(**defaults["edit"])
     subparser_edit.add_argument(
         "-b", "--blur", type=int, choices=percentage, metavar=percent_meta,
         help="how blurry the image should be, as a percentage"
@@ -485,15 +503,8 @@ def get_set_booru_wallpaper(args):
     """Set the wallpaper to an image from a booru and write data."""
     if args["next"]:
         LOGGER.debug("--next called")
-        # try:
         args = read_json(CONFIG_PATH)
         LOGGER.debug(f"args = {args}")
-        # except (FileNotFoundError, json.JSONDecodeError):
-        #     LOGGER.error("No prev_config file.")
-        #     raise ValueError(
-        #         "Please set some arguments before getting the next"
-        #         "wallpaper."
-        #         )
 
     path, data = download_image(
         args["tags"], args["imageboard"], args["retries"] + 1, args["scale"]
@@ -514,14 +525,8 @@ def list_wallpaper_info(args):
             "copyright",
             "general",
         ]
-    # try:
     data = read_json(IMAGE_DATA_PATH)
     LOGGER.debug(f"(list) data = {data}")
-    # except FileNotFoundError:
-    #     raise ValueError(
-    #         "There is no wallpaper to list data about. "
-    #         "Please set some tags."
-    #         ) from None
     for listed_data in args["list"]:
         section = listed_data.capitalize()
         key = f"tag_string_{listed_data}"
@@ -577,13 +582,16 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    defaults = XDConfigParser(DEFAULTS_PATH)["DEFAULT"]
+    defaults = XDConfigParser(DEFAULTS_PATH)
     argparser = init_argparser(defaults)
     args = vars(argparser.parse_args(argv))
 
-    init_logger(args["verbose"])
-    # Nothing is logged to the terminal until the log level is
-    # initialised, so logs can't be performed until now.
+    if args["verbose"]:
+        _TERMINAL_HANDLER.setLevel(logging.DEBUG)
+    else:
+        _TERMINAL_HANDLER.setLevel(logging.INFO)
+    # No debug messages are displayed until the level is set, so no logs
+    # can be performed until now.
     LOGGER.debug(f"argv = {argv}")
     LOGGER.debug(f"args = {args}")
 
@@ -593,9 +601,23 @@ def main(argv=None):
         sys.exit(1)
 
     if args["subcommand"] == "set":
-        get_set_booru_wallpaper(args)
+        try:
+            get_set_booru_wallpaper(args)
+        except FileNotFoundError:
+            print(textwrap.fill(
+                "There are no previous arguments to get another wallpaper. "
+                "Please set some arguments."
+                ))
+            sys.exit(1)
     if args["subcommand"] == "list":
-        list_wallpaper_info(args)
+        try:
+            list_wallpaper_info(args)
+        except FileNotFoundError:
+            print(textwrap.fill(
+                "There is no wallpaper to list data about. "
+                "Please set some arguments."
+                ))
+            sys.exit(1)
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
         filename = image_name(data)
