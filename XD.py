@@ -524,21 +524,21 @@ def get_set_booru_wallpaper(args):
     write_json(CONFIG_PATH, args)
 
 
-def list_booru_wallpaper_info(args):
+def list_booru_wallpaper_info(listings):
     """Print requested information about the current wallpaper."""
-    if "all" in args["list"]:
-        args["list"] = ALL_INFO
+    if "all" in listings:
+        listings = ALL_INFO
     data = read_json(IMAGE_DATA_PATH)
     LOGGER.debug(f"(list) data = {data}")
-    for listed_data in args["list"]:
-        if listed_data == "id":
+    for listing in listings:
+        if listing == "id":
             section = "ID"
         else:
-            section = listed_data.capitalize()
-        if listed_data in TAG_STRINGS:
-            key = f"tag_string_{listed_data}"
+            section = listing.capitalize()
+        if listing in TAG_STRINGS:
+            key = f"tag_string_{listing}"
         else:
-            key = listed_data
+            key = listing
         gram_list = gram_join(str(data[key]), final_joiner=", ")
         print(textwrap.fill(
             f"{section}: {gram_list}",
@@ -622,8 +622,9 @@ def main(argv=None):
             ))
             sys.exit(1)
     if args["subcommand"] == "list":
+        args["list"] = set(args["list"])
         try:
-            list_booru_wallpaper_info(args)
+            list_booru_wallpaper_info(args["list"])
         except FileNotFoundError:
             print(textwrap.fill(
                 "There is no wallpaper to list data about. "
