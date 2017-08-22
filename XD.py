@@ -152,11 +152,7 @@ def get_json(url, params):
     LOGGER.debug(f"status = {status}")
     # succeeded = status in success
     # if succeeded:
-        # try:
     json_data = response.json()
-        # except json.JSONDecodeError as ex:
-        #     LOGGER.error(ex)
-        #     raise ValueError(f"{url} does not have JSON data.")
     # else:
         # raise RequestError(f"Response returned code {status}.")
     # if not json_data:
@@ -204,6 +200,9 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         # except urllib.error.URLError as ex:
         #     LOGGER.error(ex)
         #     raise OSError("No internet connection.") from None
+        # except json.JSONDecodeError as ex:
+        #     LOGGER.error(ex)
+        #     raise ValueError(f"{url} does not have JSON data.")
         # except ValueError as ex:
         #     LOGGER.error(ex)
         #     raise ValueError("Invalid/conflicting tags.") from None
@@ -349,26 +348,17 @@ def set_wallpaper(path):
 
 class XDConfigParser(configparser.ConfigParser):
     """ConfigParser for this program."""
-    def __init__(self, path):
+    def __init__(self, path=DEFAULTS_PATH):
         super().__init__()
         self.path = path
-        try:
-            with open(self.path) as defaults_file:
-                self.read_file(defaults_file)
-        except FileNotFoundError:
-            LOGGER.warning("No defaults.ini file.")
-        if not self.has_section("main"):
-            self._create_defaults()
-        config_log(self)
-
-    def _create_defaults(self):
-        self.read_dict({
+        self.defaults = {
             "main": {
                 "duration": 24,
                 "keep": 2,
                 "verbose": False,
             },
             "set": {
+                "tags": "",
                 "imageboard": "https://danbooru.donmai.us",
                 "retries": 2,
                 "scale": 0.0,
@@ -382,7 +372,31 @@ class XDConfigParser(configparser.ConfigParser):
                 "grey": 0,
                 "dim": 0,
             }
-        })
+        }
+        try:
+            with open(self.path) as defaults_file:
+                self.read_file(defaults_file)
+            self._validate()
+        except FileNotFoundError:
+            LOGGER.warning("No defaults.ini file. Creating...")
+            self._create_defaults()
+        except KeyError:
+            LOGGER.warning("defaults.ini is lacking values. Resetting...")
+            self._create_defaults()
+        config_log(self.as_dict())
+
+    def _validate(self):
+        """Raise a KeyError if options are missing."""
+        for section in self.defaults:
+            for option in section:
+                try:
+                    self[section][option]
+                # XXX
+                except KeyError:
+                    raise
+
+    def _create_defaults(self):
+        self.read_dict(self.defaults)
         with open(self.path, "w") as defaults_file:
             self.write(defaults_file)
 
@@ -397,10 +411,10 @@ class XDConfigParser(configparser.ConfigParser):
 
 
 def config_log(config):
-    """Log a ConfigParser-like object's sections and options."""
-    for section, _ in config.items():
-        LOGGER.debug(f"['{section}']:")
-        for key, value in config[section].items():
+    """Log a ConfigParser-like dict's sections and options."""
+    for header, section in config.items():
+        LOGGER.debug(f"['{header}']")
+        for key, value in section.items():
             LOGGER.debug(f"{key} = {repr(value)}")
 
 
@@ -410,11 +424,13 @@ def init_argparser(defaults):
     percent_meta = "{0 ... 100}"
 
     # Cast Booleans, since configparser doesn't.
-    config_log(defaults)
     dict_defaults = defaults.as_dict()
+    LOGGER.debug("Before Boolean cast:")
+    config_log(dict_defaults)
     dict_defaults["main"]["verbose"] = defaults["main"].getboolean("verbose")
     dict_defaults["set"]["next"] = defaults["set"].getboolean("next")
     defaults = dict_defaults
+    LOGGER.debug("After Boolean cast:")
     config_log(defaults)
 
     main_parser = argparse.ArgumentParser(
@@ -510,7 +526,20 @@ def get_set_booru_wallpaper(args):
     """Set the wallpaper to an image from a booru and write data."""
     if args["next"]:
         LOGGER.debug("--next called")
-        args = read_json(CONFIG_PATH)
+        try:
+            args = read_json(CONFIG_PATH)
+        except FileNotFoundError:
+            print(textwrap.fill(
+                "There are no previous arguments to get another wallpaper. "
+                "Please set some arguments."
+            ))
+            sys.exit(1)
+        # except json.JSONDecodeError:
+        #     os.remove(CONFIG_PATH)
+        #     print(textwrap.fill(
+        #         "Previous arguments were corrupt. Please set new arguments."
+        #     ))
+        #     sys.exit(1)
         LOGGER.debug(f"args = {args}")
 
     path, data = download_booru_image(
@@ -528,7 +557,20 @@ def list_booru_wallpaper_info(listings):
     """Print requested information about the current wallpaper."""
     if "all" in listings:
         listings = ALL_INFO
-    data = read_json(IMAGE_DATA_PATH)
+    try:
+        data = read_json(IMAGE_DATA_PATH)
+    except FileNotFoundError:
+        print(textwrap.fill(
+            "There is no wallpaper to list data about. "
+            "Please set some arguments."
+        ))
+        sys.exit(1)
+    # except json.JSONDecodeError:
+    #     os.remove(IMAGE_DATA_PATH)
+    #     print(textwrap.fill(
+    #         "The image data was corrupted. Please get a new wallpaper."
+    #     ))
+    #     sys.exit(1)
     LOGGER.debug(f"(list) data = {data}")
     for listing in listings:
         if listing == "id":
@@ -594,7 +636,7 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    defaults = XDConfigParser(DEFAULTS_PATH)
+    defaults = XDConfigParser()
     argparser = init_argparser(defaults)
     args = vars(argparser.parse_args(argv))
 
@@ -613,24 +655,10 @@ def main(argv=None):
         sys.exit(1)
 
     if args["subcommand"] == "set":
-        try:
-            get_set_booru_wallpaper(args)
-        except FileNotFoundError:
-            print(textwrap.fill(
-                "There are no previous arguments to get another wallpaper. "
-                "Please set some arguments."
-            ))
-            sys.exit(1)
+        get_set_booru_wallpaper(args)
     if args["subcommand"] == "list":
         args["list"] = set(args["list"])
-        try:
-            list_booru_wallpaper_info(args["list"])
-        except FileNotFoundError:
-            print(textwrap.fill(
-                "There is no wallpaper to list data about. "
-                "Please set some arguments."
-            ))
-            sys.exit(1)
+        list_booru_wallpaper_info(args["list"])
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
         filename = booru_image_name(data)
