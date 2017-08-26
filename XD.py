@@ -40,17 +40,6 @@ _TERMINAL_HANDLER.setFormatter(_TERMINAL_FORMATTER)
 LOGGER.addHandler(_DEBUG_HANDLER)
 LOGGER.addHandler(_TERMINAL_HANDLER)
 
-TAG_STRINGS = [
-    "artist",
-    "character",
-    "copyright",
-    "general",
-]
-OTHER_INFO = [
-    "id",
-]
-ALL_INFO = TAG_STRINGS + OTHER_INFO
-
 INITIAL_CONFIG = {
     "tags": [],
     "imageboard": "https://danbooru.donmai.us",
@@ -506,7 +495,7 @@ def get_set_booru_wallpaper(args):
         LOGGER.debug(f"args = {args}")
 
     path, data = download_booru_image(
-        args["tags"], args["imageboard"], attempts=args["retries"] + 1,
+        args["tags"], args["imageboard"], attempts=args["attempts"],
         scale=args["scale"]
     )
     remove_old_wallpapers(args["keep"])
@@ -516,12 +505,8 @@ def get_set_booru_wallpaper(args):
     write_json(CONFIG_PATH, args)
 
 
-def list_booru_wallpaper_info(listings):
-    """Print requested information about the current wallpaper."""
-    # XXX: Hack until this is replaced with a simple artist character
-    # copyright list along with URL.
-    if "all" in listings:  # or listings == "all":
-        listings = ALL_INFO
+def booru_wallpaper_info():
+    """Print information about the current wallpaper."""
     try:
         data = read_json(IMAGE_DATA_PATH)
     except FileNotFoundError:
@@ -537,20 +522,17 @@ def list_booru_wallpaper_info(listings):
     #     ))
     #     sys.exit(1)
     LOGGER.debug(f"(list) data = {data}")
-    for listing in listings:
-        if listing == "id":
-            section = "ID"
-        else:
-            section = listing.capitalize()
-        if listing in TAG_STRINGS:
-            key = f"tag_string_{listing}"
-        else:
-            key = listing
-        gram_list = gram_join(str(data[key]), final_joiner=", ")
+    for info in ("artist", "character", "copyright"):
+        section = info.capitalize()
+        key = f"tag_string_{info}"
+        info_list = gram_join(str(data[key]), final_joiner=", ")
         print(textwrap.fill(
-            f"{section}: {gram_list}",
+            f"{section}: {info_list}",
             subsequent_indent=" " * len(section + ": ")
         ))
+    # TODO: add a domain key
+    url = data["domain"] + data["file_url"]
+    print(f"URL: {url}")
 
 
 def blur(image, blurriness):
@@ -621,14 +603,7 @@ def main(argv=None):
     if args["subcommand"] == "set":
         get_set_booru_wallpaper(args)
     if args["subcommand"] == "list":
-        # XXX: Hack until list is simplified.
-        LOGGER.debug(f"args list = {args['list']}")
-        if isinstance(args["list"], str):
-            args["list"] = [args["list"]]
-            LOGGER.debug(f"args list = {args['list']}")
-        args["list"] = set(args["list"])
-        LOGGER.debug(f"args list = {args['list']}")
-        list_booru_wallpaper_info(args["list"])
+        booru_wallpaper_info()
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
         filename = booru_image_name(data)
