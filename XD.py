@@ -51,6 +51,18 @@ OTHER_INFO = [
 ]
 ALL_INFO = TAG_STRINGS + OTHER_INFO
 
+INITIAL_CONFIG = {
+    "tags": [],
+    "imageboard": "https://danbooru.donmai.us",
+    "retries": 0,
+    "scale": 0.0,
+    "duration": 0,
+    "keep": 1,
+    "blur": 0.0,
+    "grey": 0.0,
+    "dim": 0.0,
+}
+
 
 def sorted_files(directory):
     """Return a sorted list of files by modified date."""
@@ -352,15 +364,15 @@ def init_argparser():
     main_parser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.MetavarTypeHelpFormatter
     )
     main_parser.add_argument(
         "-d", "--duration", type=int, choices=range(0, 25),
-        metavar="{1 ... 24}", default=0,
+        metavar="{1 ... 24}",
         help="the duration of the wallpaper in hours"
     )
     main_parser.add_argument(
-        "-k", "--keep", type=wallpaper_num, metavar="{1 ...}", default=1,
+        "-k", "--keep", type=wallpaper_num, metavar="{1 ...}",
         help="the number of wallpapers to keep"
     )
     main_parser.add_argument(
@@ -370,22 +382,22 @@ def init_argparser():
 
     subparser_set = subparsers.add_parser(
         "set", help="get an image and set it as the wallpaper",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.MetavarTypeHelpFormatter
     )
     subparser_set.add_argument(
         "tags", nargs="*",
         help="a space-delimited list of tags the image must match"
     )
     subparser_set.add_argument(
-        "-i", "--imageboard", default="https://danbooru.donmai.us",
+        "-i", "--imageboard",
         help="a Danbooru-like site to source images from"
     )
     subparser_set.add_argument(
-        "-r", "--retries", type=int, default=0,
+        "-r", "--retries", type=int,
         help="the number of times to retry getting the image"
     )
     subparser_set.add_argument(
-        "-s", "--scale", type=float, default=0,
+        "-s", "--scale", type=float,
         help="the minimum relative size of the image to the screen"
     )
     subparser_set.add_argument(
@@ -395,30 +407,28 @@ def init_argparser():
 
     subparser_list = subparsers.add_parser(
         "list", help="print information about the current wallpaper",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.MetavarTypeHelpFormatter
     )
     subparser_list.add_argument(
-        "list", nargs="*", choices=ALL_INFO + ["all"], default="all",
-        # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
-        # default=[element.strip() for element in defaults["list"].split(",")],
+        "list", nargs="*", choices=ALL_INFO + ["all"],
         help="the information to print"
     )
 
     subparser_edit = subparsers.add_parser(
         "edit", help="modify the current wallpaper",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.MetavarTypeHelpFormatter
     )
     subparser_edit.add_argument(
         "-b", "--blur", type=int, choices=percentage, metavar=percent_meta,
-        default=0, help="how blurry the image should be, as a percentage"
+        help="how blurry the image should be, as a percentage"
     )
     subparser_edit.add_argument(
         "-g", "--grey", type=int, choices=percentage, metavar=percent_meta,
-        default=0, help="how monochrome the image should be, as a percentage"
+        help="how monochrome the image should be, as a percentage"
     )
     subparser_edit.add_argument(
         "-d", "--dim", type=int, choices=percentage, metavar=percent_meta,
-        default=0, help="how dark the image should be, as a percentage"
+        help="how dark the image should be, as a percentage"
     )
 
     return main_parser
