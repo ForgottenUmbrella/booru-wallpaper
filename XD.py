@@ -6,7 +6,6 @@ import os
 import os.path
 import subprocess
 import argparse
-import configparser
 import json
 import textwrap
 import ctypes
@@ -22,7 +21,6 @@ SCRIPT_PATH = os.path.realpath(__file__)
 ROOT_DIR = os.path.dirname(SCRIPT_PATH)
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 IMAGE_DATA_PATH = os.path.join(DATA_DIR, "image_data.json")
-DEFAULTS_PATH = os.path.join(DATA_DIR, "defaults.ini")
 CONFIG_PATH = os.path.join(DATA_DIR, "prev_config.json")
 WALLPAPERS_DIR = os.path.join(ROOT_DIR, "wallpapers")
 LOG_PATH = os.path.join(ROOT_DIR, "log")
@@ -346,110 +344,27 @@ def set_wallpaper(path):
         raise NotImplementedError("OS is not yet supported.")
 
 
-class XDConfigParser(configparser.ConfigParser):
-    """ConfigParser for this program."""
-    def __init__(self, path=DEFAULTS_PATH):
-        super().__init__()
-        self.path = path
-        self.defaults = {
-            "main": {
-                "duration": 24,
-                "keep": 2,
-                "verbose": False,
-            },
-            "set": {
-                "tags": "",
-                "imageboard": "https://danbooru.donmai.us",
-                "retries": 2,
-                "scale": 0.0,
-                "next": False,
-            },
-            "list": {
-                "list": "all",
-            },
-            "edit": {
-                "blur": 0,
-                "grey": 0,
-                "dim": 0,
-            }
-        }
-        try:
-            with open(self.path) as defaults_file:
-                self.read_file(defaults_file)
-            self._validate()
-        except FileNotFoundError:
-            LOGGER.warning("No defaults.ini file. Creating...")
-            self._create_defaults()
-        except KeyError:
-            LOGGER.warning("defaults.ini is lacking values. Resetting...")
-            self._create_defaults()
-        config_log(self.as_dict())
-
-    def _validate(self):
-        """Raise a KeyError if options are missing."""
-        for section in self.defaults:
-            for option in section:
-                try:
-                    self[section][option]
-                # XXX
-                except KeyError:
-                    raise
-
-    def _create_defaults(self):
-        self.read_dict(self.defaults)
-        with open(self.path, "w") as defaults_file:
-            self.write(defaults_file)
-
-    def as_dict(self):
-        """Return a dictionary representation of the ConfigParser."""
-        dictionary = {}
-        for section in self.sections():
-            dictionary[section] = {}
-            for option in self.options(section):
-                dictionary[section][option] = self.get(section, option)
-        return dictionary
-
-
-def config_log(config):
-    """Log a ConfigParser-like dict's sections and options."""
-    for header, section in config.items():
-        LOGGER.debug(f"['{header}']")
-        for key, value in section.items():
-            LOGGER.debug(f"{key} = {repr(value)}")
-
-
-def init_argparser(defaults):
-    """Return an ArgumentParser with appropriate defaults."""
+def init_argparser():
+    """Return an ArgumentParser specialised for this script."""
     percentage = range(0, 101)
     percent_meta = "{0 ... 100}"
-
-    # Cast Booleans, since configparser doesn't.
-    dict_defaults = defaults.as_dict()
-    LOGGER.debug("Before Boolean cast:")
-    config_log(dict_defaults)
-    dict_defaults["main"]["verbose"] = defaults["main"].getboolean("verbose")
-    dict_defaults["set"]["next"] = defaults["set"].getboolean("next")
-    defaults = dict_defaults
-    LOGGER.debug("After Boolean cast:")
-    config_log(defaults)
 
     main_parser = argparse.ArgumentParser(
         description="Utility to regularly set the wallpaper to a random "
         "tagged image from a booru",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    main_parser.set_defaults(**defaults["main"])
     main_parser.add_argument(
-        "-d", "--duration", type=int, choices=range(1, 25),
-        metavar="{1 ... 24}", help="the duration of the wallpaper in hours"
+        "-d", "--duration", type=int, choices=range(0, 25),
+        metavar="{1 ... 24}", default=0,
+        help="the duration of the wallpaper in hours"
     )
     main_parser.add_argument(
-        "-k", "--keep", type=wallpaper_num, metavar="{1 ...}",
+        "-k", "--keep", type=wallpaper_num, metavar="{1 ...}", default=1,
         help="the number of wallpapers to keep"
     )
     main_parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="increase verbosity"
+        "-v", "--verbose", action="store_true", help="increase verbosity"
     )
     subparsers = main_parser.add_subparsers(dest="subcommand")
 
@@ -457,20 +372,20 @@ def init_argparser(defaults):
         "set", help="get an image and set it as the wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    subparser_set.set_defaults(**defaults["set"])
     subparser_set.add_argument(
-        "tags", nargs="*", default=argparse.SUPPRESS,
+        "tags", nargs="*",
         help="a space-delimited list of tags the image must match"
     )
     subparser_set.add_argument(
-        "-i", "--imageboard", help="a URL to source images from"
+        "-i", "--imageboard", default="https://danbooru.donmai.us",
+        help="a Danbooru-like site to source images from"
     )
     subparser_set.add_argument(
-        "-r", "--retries", type=int,
+        "-r", "--retries", type=int, default=0,
         help="the number of times to retry getting the image"
     )
     subparser_set.add_argument(
-        "-s", "--scale", type=float,
+        "-s", "--scale", type=float, default=0,
         help="the minimum relative size of the image to the screen"
     )
     subparser_set.add_argument(
@@ -482,9 +397,8 @@ def init_argparser(defaults):
         "list", help="print information about the current wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    subparser_list.set_defaults(**defaults["list"])
     subparser_list.add_argument(
-        "list", nargs="*", choices=ALL_INFO + ["all"],
+        "list", nargs="*", choices=ALL_INFO + ["all"], default="all",
         # XXX: default can't yet be a list (http://bugs.python.org/issue9625)
         # default=[element.strip() for element in defaults["list"].split(",")],
         help="the information to print"
@@ -494,18 +408,17 @@ def init_argparser(defaults):
         "edit", help="modify the current wallpaper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    subparser_edit.set_defaults(**defaults["edit"])
     subparser_edit.add_argument(
         "-b", "--blur", type=int, choices=percentage, metavar=percent_meta,
-        help="how blurry the image should be, as a percentage"
+        default=0, help="how blurry the image should be, as a percentage"
     )
     subparser_edit.add_argument(
         "-g", "--grey", type=int, choices=percentage, metavar=percent_meta,
-        help="how monochrome the image should be, as a percentage"
+        default=0, help="how monochrome the image should be, as a percentage"
     )
     subparser_edit.add_argument(
         "-d", "--dim", type=int, choices=percentage, metavar=percent_meta,
-        help="how dark the image should be, as a percentage"
+        default=0, help="how dark the image should be, as a percentage"
     )
 
     return main_parser
@@ -555,7 +468,9 @@ def get_set_booru_wallpaper(args):
 
 def list_booru_wallpaper_info(listings):
     """Print requested information about the current wallpaper."""
-    if "all" in listings:
+    # XXX: Hack until this is replaced with a simple artist character
+    # copyright list along with URL.
+    if "all" in listings:  # or listings == "all":
         listings = ALL_INFO
     try:
         data = read_json(IMAGE_DATA_PATH)
@@ -636,8 +551,7 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    defaults = XDConfigParser()
-    argparser = init_argparser(defaults)
+    argparser = init_argparser()
     args = vars(argparser.parse_args(argv))
 
     if args["verbose"]:
@@ -657,7 +571,13 @@ def main(argv=None):
     if args["subcommand"] == "set":
         get_set_booru_wallpaper(args)
     if args["subcommand"] == "list":
+        # XXX: Hack until list is simplified.
+        LOGGER.debug(f"args list = {args['list']}")
+        if isinstance(args["list"], str):
+            args["list"] = [args["list"]]
+            LOGGER.debug(f"args list = {args['list']}")
         args["list"] = set(args["list"])
+        LOGGER.debug(f"args list = {args['list']}")
         list_booru_wallpaper_info(args["list"])
     if args["subcommand"] == "edit":
         data = read_json(IMAGE_DATA_PATH)
