@@ -54,10 +54,10 @@ ALL_INFO = TAG_STRINGS + OTHER_INFO
 INITIAL_CONFIG = {
     "tags": [],
     "imageboard": "https://danbooru.donmai.us",
-    "retries": 0,
+    "attempts": 1,
     "scale": 0.0,
-    "duration": 0,
     "keep": 1,
+    "rotation": 0,
     "blur": 0.0,
     "grey": 0.0,
     "dim": 0.0,
@@ -362,75 +362,115 @@ def init_argparser():
     percent_meta = "{0 ... 100}"
 
     main_parser = argparse.ArgumentParser(
-        description="Utility to regularly set the wallpaper to a random "
+        description="Utility to periodically set the wallpaper to a random "
         "tagged image from a booru",
-        formatter_class=argparse.MetavarTypeHelpFormatter
-    )
-    main_parser.add_argument(
-        "-d", "--duration", type=int, choices=range(0, 25),
-        metavar="{1 ... 24}",
-        help="the duration of the wallpaper in hours"
-    )
-    main_parser.add_argument(
-        "-k", "--keep", type=wallpaper_num, metavar="{1 ...}",
-        help="the number of wallpapers to keep"
     )
     main_parser.add_argument(
         "-v", "--verbose", action="store_true", help="increase verbosity"
     )
     subparsers = main_parser.add_subparsers(dest="subcommand")
 
-    subparser_set = subparsers.add_parser(
-        "set", help="get an image and set it as the wallpaper",
-        formatter_class=argparse.MetavarTypeHelpFormatter
+    args = {
+        "tags": ("-t", "--tags"),
+        "imageboard": ("-i", "--imageboard"),
+        "attempts": ("-a", "--attempts"),
+        "scale": ("-s", "--scale"),
+        "keep": ("-k", "--keep"),
+        "rotation": ("-r", "--rotation"),
+        "blur": ("-b", "--blur"),
+        "grey": ("-g", "--grey"),
+        "dim": ("-d", "--dim"),
+    }
+    kwargs = {
+        "tags": {
+            "help": "list of labels images should match",
+        },
+        "imageboard": {
+            "help": "Danbooru-like site to get images from",
+        },
+        "attempts": {
+            "help": "number of times to try to get an image",
+        },
+        "scale": {
+            "help": "minimum image size ratio relative to the screen",
+        },
+        "keep": {
+            "help": "number of wallpapers to store",
+        },
+        "rotation": {
+            "help": "hours to wait before changing wallpapers",
+        },
+        "blur": {
+            "help": "percentage of blurriness",
+        },
+        "grey": {
+            "help": "percentage of loss in colour",
+        },
+        "dim": {
+            "help": "percentage of darkness",
+        },
+    }
+    set_subparser = subparsers.add_parser(
+        "set", help="change settings for getting an image, wallpaper "
+        "appearance, the schedule and the number of images to store",
     )
-    subparser_set.add_argument(
-        "tags", nargs="*",
-        help="a space-delimited list of tags the image must match"
+    set_subparser.add_argument(
+        *args["tags"], **kwargs["tags"], nargs="*"
     )
-    subparser_set.add_argument(
-        "-i", "--imageboard",
-        help="a Danbooru-like site to source images from"
+    set_subparser.add_argument(
+        *args["imageboard"], **kwargs["imageboard"]
     )
-    subparser_set.add_argument(
-        "-r", "--retries", type=int,
-        help="the number of times to retry getting the image"
+    set_subparser.add_argument(
+        *args["attempts"], **kwargs["attempts"], type=int
     )
-    subparser_set.add_argument(
-        "-s", "--scale", type=float,
-        help="the minimum relative size of the image to the screen"
+    set_subparser.add_argument(
+        *args["scale"], **kwargs["scale"], type=float
     )
-    subparser_set.add_argument(
-        "-n", "--next", action="store_true",
-        help="get the next wallpaper using the previous settings"
+    set_subparser.add_argument(
+        *args["keep"], **kwargs["keep"], type=wallpaper_num, metavar="{1 ...}"
+    )
+    set_subparser.add_argument(
+        *args["rotation"], **kwargs["rotation"], type=int,
+        choices=range(0, 25), metavar="{1 ... 24}"
+    )
+    edit_group = set_subparser.add_argument_group(
+        "wallpaper edit arguments",
+        "immediately change the wallpaper's appearance"
+    )
+    edit_group.add_argument(
+        *args["blur"], **kwargs["blur"], type=int, choices=percentage,
+        metavar=percent_meta
+    )
+    edit_group.add_argument(
+        *args["grey"], **kwargs["grey"], type=int, choices=percentage,
+        metavar=percent_meta
+    )
+    edit_group.add_argument(
+        *args["dim"], **kwargs["dim"], type=int, choices=percentage,
+        metavar=percent_meta
     )
 
-    subparser_list = subparsers.add_parser(
-        "list", help="print information about the current wallpaper",
-        formatter_class=argparse.MetavarTypeHelpFormatter
+    parent_subparser = argparse.ArgumentParser(add_help=False)
+    for arg in args:
+        parent_subparser.add_argument(
+            *args[arg], **kwargs[arg], action="store_true"
+        )
+    subparsers.add_parser(
+        "get", help="view configuration values", parents=[parent_subparser]
     )
-    subparser_list.add_argument(
-        "list", nargs="*", choices=ALL_INFO + ["all"],
-        help="the information to print"
-    )
-
-    subparser_edit = subparsers.add_parser(
-        "edit", help="modify the current wallpaper",
-        formatter_class=argparse.MetavarTypeHelpFormatter
-    )
-    subparser_edit.add_argument(
-        "-b", "--blur", type=int, choices=percentage, metavar=percent_meta,
-        help="how blurry the image should be, as a percentage"
-    )
-    subparser_edit.add_argument(
-        "-g", "--grey", type=int, choices=percentage, metavar=percent_meta,
-        help="how monochrome the image should be, as a percentage"
-    )
-    subparser_edit.add_argument(
-        "-d", "--dim", type=int, choices=percentage, metavar=percent_meta,
-        help="how dark the image should be, as a percentage"
+    subparsers.add_parser(
+        "reset", help="set configuration back to its initial values",
+        parents=[parent_subparser]
     )
 
+    subparsers.add_parser(
+        "info", help="view information about the current wallpaper",
+        add_help=False
+    )
+    subparsers.add_parser(
+        "next", help="get another wallpaper",
+        add_help=False
+    )
     return main_parser
 
 
