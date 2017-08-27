@@ -10,6 +10,7 @@ import json
 import textwrap
 import ctypes
 import logging
+import contextlib
 
 import tkinter
 import requests
@@ -21,7 +22,7 @@ SCRIPT_PATH = os.path.realpath(__file__)
 ROOT_DIR = os.path.dirname(SCRIPT_PATH)
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 IMAGE_DATA_PATH = os.path.join(DATA_DIR, "image_data.json")
-CONFIG_PATH = os.path.join(DATA_DIR, "prev_config.json")
+CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 WALLPAPERS_DIR = os.path.join(ROOT_DIR, "wallpapers")
 LOG_PATH = os.path.join(ROOT_DIR, "log")
 
@@ -54,7 +55,7 @@ INITIAL_CONFIG = {
 
 
 def sorted_files(directory):
-    """Return a sorted list of files by modified date."""
+    """Return a list of files sorted by modified date."""
     files = []
     for file in os.listdir(directory):
         path = os.path.join(directory, file)
@@ -63,12 +64,19 @@ def sorted_files(directory):
     return files
 
 
+@contextlib.contextmanager
+def spinner():
+    """Context manager for a spinning cursor so it prints neatly."""
+    yield wait_warmly()
+    print()
+
+
 def wait_warmly():
     """Yield parts of a spinning cursor."""
     chars = r"-\|/"
     while True:
         for c in chars:
-            yield c
+            yield "\r" + c
 
 
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
@@ -121,13 +129,12 @@ def write_json(path, data):
 
 def download(url, path):
     """Store a copy of a file from the internet."""
-    spinner = wait_warmly()
-    with requests.get(url, stream=True) as response, open(path, "wb") as file:
+    with requests.get(url, stream=True) as response, open(path, "wb") as file,\
+            spinner() as cursors:
         chunks = response.iter_content(chunk_size=128)
-        for cursor, chunk in zip(spinner, chunks):
-            print(cursor, "Downloading...", end="\r")
+        for cursor, chunk in zip(cursors, chunks):
+            print(cursor, "Downloading...", end="")
             file.write(chunk)
-        print()
 
 
 def get_json(url, params):
@@ -145,8 +152,11 @@ def get_json(url, params):
     #     ValueError: If no JSON data is available from `url`.
     """
     # success = range(100, 400)
-    LOGGER.debug(f"GET url = {url}")
-    response = requests.get(url, params=params)
+    try:
+        response = requests.get(url, params=params)
+    except requests.exceptions.ConnectionError:
+        print("No internet connection.")
+        sys.exit(1)
     status = response.status_code
     LOGGER.debug(f"status = {status}")
     # succeeded = status in success
@@ -178,7 +188,6 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         ValueError: If none of the images fetched meet all requirements.
     #     ValueError: If there are too many tags, or there were no images
     #         tagged with them all.
-    #     OSError: If there was no internet connection available.
     """
     url = f"{imageboard}/posts.json"
     params = {
@@ -196,9 +205,6 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         # except urllib.error.HTTPError as ex:
         #     LOGGER.error(ex)
         #     raise ValueError("Too many tags.") from None
-        # except urllib.error.URLError as ex:
-        #     LOGGER.error(ex)
-        #     raise OSError("No internet connection.") from None
         # except json.JSONDecodeError as ex:
         #     LOGGER.error(ex)
         #     raise ValueError(f"{url} does not have JSON data.")
@@ -217,6 +223,10 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
 def booru_image_name(image_data):
     """Return the filename of a booru image."""
     return image_data["file_url"].split("/")[-1]
+
+def booru_image_url(image_data):
+    """Return the full URL of a booru image."""
+    return os.path.join(image_data["domain"], "posts", str(image_data["id"]))
 
 
 def download_booru_image(
@@ -239,11 +249,13 @@ def download_booru_image(
     data = get_image_data(
         tags, imageboard, attempts=attempts, scale=scale
     )
-    url = imageboard + data["file_url"]
+    # Patch "domain" into `data` so info subcommand can display source.
+    data["domain"] = imageboard
+    url = booru_image_url(data)
     filename = booru_image_name(data)
     path = os.path.join(directory, filename)
     download(url, path)
-    return path, data
+    return data, path
 
 
 def remove_old_wallpapers(limit, directory=WALLPAPERS_DIR):
@@ -294,8 +306,8 @@ def set_linux_wallpaper(path):
     else:
         command = f"feh --bg-scale {path}"
         print(textwrap.fill(
-            "If you're using a standalone WM like i3 or awesome, make sure to "
-            "configure it to use feh as the wallpaper source."
+            "If you're using a standalone WM, make sure to configure it to "
+            "use feh as the wallpaper source."
         ))
         print(textwrap.fill(
             "For example, if you're using i3, your ~/.config/i3/config should "
@@ -445,11 +457,13 @@ def init_argparser():
             *args[arg], **kwargs[arg], action="store_true"
         )
     subparsers.add_parser(
-        "get", help="view configuration values", parents=[parent_subparser]
+        "get", parents=[parent_subparser], help="view configuration values",
+        epilog="if no options are specified, show all"
     )
     subparsers.add_parser(
-        "reset", help="set configuration back to its initial values",
-        parents=[parent_subparser]
+        "reset", parents=[parent_subparser],
+        help="set configuration back to its initial values",
+        epilog="if no options are specified, reset all"
     )
 
     subparsers.add_parser(
@@ -474,65 +488,40 @@ def wallpaper_num(x):
     return x
 
 
-def get_set_booru_wallpaper(args):
-    """Set the wallpaper to an image from a booru and write data."""
-    if args["next"]:
-        LOGGER.debug("--next called")
-        try:
-            args = read_json(CONFIG_PATH)
-        except FileNotFoundError:
-            print(textwrap.fill(
-                "There are no previous arguments to get another wallpaper. "
-                "Please set some arguments."
-            ))
-            sys.exit(1)
-        # except json.JSONDecodeError:
-        #     os.remove(CONFIG_PATH)
-        #     print(textwrap.fill(
-        #         "Previous arguments were corrupt. Please set new arguments."
-        #     ))
-        #     sys.exit(1)
-        LOGGER.debug(f"args = {args}")
-
-    path, data = download_booru_image(
-        args["tags"], args["imageboard"], attempts=args["attempts"],
-        scale=args["scale"]
+def next_wallpaper(config):
+    """Set and edit the wallpaper, and write image data."""
+    data, path = download_booru_image(
+        config["tags"], config["imageboard"], attempts=config["attempts"],
+        scale=config["scale"]
     )
-    remove_old_wallpapers(args["keep"])
+    remove_old_wallpapers(config["keep"])
+    edit_booru_wallpaper(config, data)
     set_wallpaper(path)
 
     write_json(IMAGE_DATA_PATH, data)
-    write_json(CONFIG_PATH, args)
 
 
-def booru_wallpaper_info():
-    """Print information about the current wallpaper."""
+def wallpaper_info(path=IMAGE_DATA_PATH):
+    """Return information about the current wallpaper."""
     try:
-        data = read_json(IMAGE_DATA_PATH)
+        data = read_json(path)
     except FileNotFoundError:
         print(textwrap.fill(
-            "There is no wallpaper to list data about. "
-            "Please set some arguments."
+            "No information on wallpaper."
         ))
         sys.exit(1)
-    # except json.JSONDecodeError:
-    #     os.remove(IMAGE_DATA_PATH)
-    #     print(textwrap.fill(
-    #         "The image data was corrupted. Please get a new wallpaper."
-    #     ))
-    #     sys.exit(1)
-    LOGGER.debug(f"(list) data = {data}")
-    for info in ("artist", "character", "copyright"):
-        section = info.capitalize()
-        key = f"tag_string_{info}"
-        info_list = gram_join(str(data[key]), final_joiner=", ")
-        print(textwrap.fill(
-            f"{section}: {info_list}",
-            subsequent_indent=" " * len(section + ": ")
+    LOGGER.debug(f"data = {data}")
+    info = []
+    for key in ("artist", "character", "copyright"):
+        real_key = f"tag_string_{key}"
+        info_list = gram_join(str(data[real_key]), final_joiner=", ")
+        info.extend(textwrap.wrap(
+            f"{key}: {info_list}",
+            subsequent_indent=" " * len(key+ ": ")
         ))
-    # TODO: add a domain key
-    url = data["domain"] + data["file_url"]
-    print(f"URL: {url}")
+    url = booru_image_url(data)
+    info.append(f"url: {url}")
+    return "\n".join(info)
 
 
 def blur(image, blurriness):
@@ -574,6 +563,61 @@ def edit_wallpaper(path, blurriness, greyness, dimness):
     image.save(path)
 
 
+def get_config(path=CONFIG_PATH):
+    """Return a stored config dict or a newly created one if missing."""
+    try:
+        config = read_json(path)
+    except FileNotFoundError:
+        LOGGER.info("Missing config")
+        config = INITIAL_CONFIG
+        write_json(path, config)
+    return config
+
+
+def update_config(config, args):
+    """Update config and edit wallpaper if edit settings changed."""
+    edit_config_changed = any(
+        args[edit] is not None for edit in ("blur", "grey", "dim")
+    )
+    if edit_config_changed:
+        image_data = read_json(IMAGE_DATA_PATH)
+        path = edit_booru_wallpaper(args, image_data)
+        set_wallpaper(path)
+    for arg in config:
+        if args[arg] is not None:
+            config[arg] = args[arg]
+    write_json(CONFIG_PATH, config)
+
+
+def reset_config(config, args, initial=None):
+    """Restore some config options to initial values."""
+    if initial is None:
+        initial = INITIAL_CONFIG
+    none_specified = not any(args[arg] for arg in initial)
+    for arg in initial:
+        if args[arg] or none_specified:
+            config[arg] = initial[arg]
+    write_json(CONFIG_PATH, config)
+
+
+def config_info(config, args):
+    """Return some config options."""
+    options = []
+    none_specified = not any(args[arg] for arg in config)
+    for arg in config:
+        if args[arg] or none_specified:
+            options.append(f"{arg}: {config[arg]}")
+    return "\n".join(options)
+
+
+def edit_booru_wallpaper(config, image_data):
+    """Modify the wallpaper in place and return its path."""
+    filename = booru_image_name(image_data)
+    path = os.path.join(WALLPAPERS_DIR, filename)
+    edit_wallpaper(path, config["blur"], config["grey"], config["dim"])
+    return path
+
+
 def main(argv=None):
     """Set the wallpaper and schedule it to change.
 
@@ -585,6 +629,7 @@ def main(argv=None):
     """
     argparser = init_argparser()
     args = vars(argparser.parse_args(argv))
+    config = get_config()
 
     if args["verbose"]:
         _TERMINAL_HANDLER.setLevel(logging.DEBUG)
@@ -592,24 +637,25 @@ def main(argv=None):
         _TERMINAL_HANDLER.setLevel(logging.INFO)
     # No debug messages are displayed until the level is set, so no logs
     # can be performed until now.
-    LOGGER.debug(f"argv = {argv}")
     LOGGER.debug(f"args = {args}")
+    LOGGER.debug(f"config = {config}")
 
     no_args = (len(sys.argv) == 1)
     if no_args:
         argparser.print_help()
         sys.exit(1)
 
-    if args["subcommand"] == "set":
-        get_set_booru_wallpaper(args)
-    if args["subcommand"] == "list":
-        booru_wallpaper_info()
-    if args["subcommand"] == "edit":
-        data = read_json(IMAGE_DATA_PATH)
-        filename = booru_image_name(data)
-        path = os.path.join(WALLPAPERS_DIR, filename)
-        edit_wallpaper(path, args["blur"], args["grey"], args["dim"])
-        set_wallpaper(path)
+    subcommand = args["subcommand"]
+    if subcommand == "set":
+        update_config(config, args)
+    if subcommand == "get":
+        print(config_info(config, args))
+    if subcommand == "reset":
+        reset_config(config, args)
+    if subcommand == "next":
+        next_wallpaper(config)
+    if subcommand == "info":
+        print(wallpaper_info())
 
 
 if __name__ == "__main__":
