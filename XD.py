@@ -225,35 +225,6 @@ def booru_image_name(image_data):
     return image_data["file_url"].split("/")[-1]
 
 
-def download_booru_image(
-        tags, imageboard, attempts=1, scale=1.0, directory=WALLPAPERS_DIR):
-    """Download an image and return its path and data.
-
-    Args:
-        tags ([str]): Labels the image must match.
-        imageboard (str): URL of website to download from.
-        attempts (int): Number of times to try to get a valid image.
-            Defaults to 1.
-        scale (float): Relative image size in relation to the screen.
-            Defaults to 1.0.
-        directory (str): Path of folder to download to.
-            Defaults to the `WALLPAPERS_DIR` constant.
-
-    Returns:
-        tuple: The path of the image and its metadata.
-    """
-    data = get_image_data(
-        tags, imageboard, attempts=attempts, scale=scale
-    )
-    # Patch so info subcommand can display source.
-    data["post_url"] = os.path.join(imageboard, "posts", data["id"])
-    url = imageboard + data["file_url"]
-    filename = booru_image_name(data)
-    path = os.path.join(directory, filename)
-    download(url, path)
-    return data, path
-
-
 def remove_old_wallpapers(limit, directory=WALLPAPERS_DIR):
     """Delete old wallpapers if there are too many in the folder."""
     wallpapers = sorted_files(directory)
@@ -485,15 +456,20 @@ def wallpaper_num(x):
 
 
 def next_wallpaper(config):
-    """Set and edit the wallpaper, and write image data."""
-    data, path = download_booru_image(
+    """Set the next wallpaper, and write its image data."""
+    data = get_image_data(
         config["tags"], config["imageboard"], attempts=config["attempts"],
         scale=config["scale"]
     )
+    # Patch so info subcommand can display source.
+    data["post_url"] = os.path.join(config["imageboard"], "posts", data["id"])
+    url = config["imageboard"] + data["file_url"]
+    filename = booru_image_name(data)
+    path = os.path.join(WALLPAPERS_DIR, filename)
+    download(url, path)
     remove_old_wallpapers(config["keep"])
     edit_booru_wallpaper(config, data)
     set_wallpaper(path)
-
     write_json(IMAGE_DATA_PATH, data)
 
 
@@ -515,8 +491,7 @@ def wallpaper_info(path=IMAGE_DATA_PATH):
             f"{key}: {info_list}",
             subsequent_indent=" " * len(key+ ": ")
         ))
-    url = data["post_url"]
-    info.append(f"url: {url}")
+    info.append(f"url: {data['post_url']}")
     return "\n".join(info)
 
 
