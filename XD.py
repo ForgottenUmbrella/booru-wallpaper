@@ -224,10 +224,6 @@ def booru_image_name(image_data):
     """Return the filename of a booru image."""
     return image_data["file_url"].split("/")[-1]
 
-def booru_image_url(image_data):
-    """Return the full URL of a booru image."""
-    return os.path.join(image_data["domain"], "posts", str(image_data["id"]))
-
 
 def download_booru_image(
         tags, imageboard, attempts=1, scale=1.0, directory=WALLPAPERS_DIR):
@@ -249,9 +245,9 @@ def download_booru_image(
     data = get_image_data(
         tags, imageboard, attempts=attempts, scale=scale
     )
-    # Patch "domain" into `data` so info subcommand can display source.
-    data["domain"] = imageboard
-    url = booru_image_url(data)
+    # Patch so info subcommand can display source.
+    data["post_url"] = os.path.join(imageboard, "posts", data["id"])
+    url = imageboard + data["file_url"]
     filename = booru_image_name(data)
     path = os.path.join(directory, filename)
     download(url, path)
@@ -519,7 +515,7 @@ def wallpaper_info(path=IMAGE_DATA_PATH):
             f"{key}: {info_list}",
             subsequent_indent=" " * len(key+ ": ")
         ))
-    url = booru_image_url(data)
+    url = data["post_url"]
     info.append(f"url: {url}")
     return "\n".join(info)
 
