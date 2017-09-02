@@ -24,6 +24,7 @@ DATA_DIR = os.path.join(ROOT_DIR, "data")
 IMAGE_DATA_PATH = os.path.join(DATA_DIR, "image_data.json")
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 WALLPAPERS_DIR = os.path.join(ROOT_DIR, "wallpapers")
+EDITS_DIR = os.path.join(ROOT_DIR, "edits")
 LOG_PATH = os.path.join(ROOT_DIR, "log")
 
 LOGGER = logging.getLogger(__name__)
@@ -222,17 +223,18 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
 
 def booru_image_name(image_data):
     """Return the filename of a booru image."""
-    return image_data["file_url"].split("/")[-1]
+    return os.path.basename(image_data["file_url"])
 
 
-def remove_old_wallpapers(limit, directory=WALLPAPERS_DIR):
-    """Delete old wallpapers if there are too many in the folder."""
-    wallpapers = sorted_files(directory)
-    num_extra = len(wallpapers) - limit
-    if num_extra > 0:
-        print("Removing old wallpapers...")
-        for wallpaper in wallpapers[:num_extra]:
-            os.remove(wallpaper)
+def remove_old_wallpapers(limit, directories=[WALLPAPERS_DIR, EDITS_DIR]):
+    """Delete old wallpapers if there are too many in the folders."""
+    print("Removing old wallpapers...")
+    for directory in directories:
+        wallpapers = sorted_files(directory)
+        num_extra = len(wallpapers) - limit
+        if num_extra > 0:
+            for wallpaper in wallpapers[:num_extra]:
+                os.remove(wallpaper)
 
 
 def set_linux_wallpaper(path):
@@ -468,7 +470,9 @@ def next_wallpaper(config):
     path = os.path.join(WALLPAPERS_DIR, filename)
     download(url, path)
     remove_old_wallpapers(config["keep"])
-    edit_booru_wallpaper(config, data)
+    edit = blur or grey or dim
+    if edit:
+        path = edit_booru_wallpaper(config, data)
     set_wallpaper(path)
     write_json(IMAGE_DATA_PATH, data)
 
@@ -478,9 +482,7 @@ def wallpaper_info(path=IMAGE_DATA_PATH):
     try:
         data = read_json(path)
     except FileNotFoundError:
-        print(textwrap.fill(
-            "No information on wallpaper."
-        ))
+        print("No information on wallpaper.")
         sys.exit(1)
     LOGGER.debug(f"data = {data}")
     info = []
@@ -518,20 +520,27 @@ def dim(image, dimness):
     return new_image
 
 
-def edit_wallpaper(path, blurriness, greyness, dimness):
-    """Make the saved wallpaper more/less blurry, grey and dim.
+def edit_image(in_path, out_path=None, blurriness=0, greyness=0, dimness=0):
+    """Make an image more/less blurry, grey and dim.
 
     Args:
-        path (str): Location of image to be edited.
+        in_path (str): Location of image to be edited.
+        out_path (str): Location of where to save the edited image.
+            Defaults to the same as `in_path`.
         blurriness (int): Percentage of how blurry the image should be.
+            Defaults to 0.
         greyness (int): Percentage of how monochrome the image should be.
+            Defaults to 0.
         dimness (int): Percentage of how dim the image should be.
+            Defaults to 0.
     """
-    image = PIL.Image.open(path)
+    if out_path is None:
+        out_path = in_path
+    image = PIL.Image.open(in_path)
     image = blur(image, blurriness)
     image = grey(image, greyness)
     image = dim(image, dimness)
-    image.save(path)
+    image.save(out_path)
 
 
 def get_config(path=CONFIG_PATH):
@@ -552,8 +561,8 @@ def update_config(config, args):
     )
     if edit_config_changed:
         image_data = read_json(IMAGE_DATA_PATH)
-        path = edit_booru_wallpaper(args, image_data)
-        set_wallpaper(path)
+        new_path = edit_booru_wallpaper(args, image_data)
+        set_wallpaper(new_path)
     for arg in config:
         if args[arg] is not None:
             config[arg] = args[arg]
@@ -582,11 +591,17 @@ def config_info(config, args):
 
 
 def edit_booru_wallpaper(config, image_data):
-    """Modify the wallpaper in place and return its path."""
+    """Modify the wallpaper in place and return its new path."""
     filename = booru_image_name(image_data)
     path = os.path.join(WALLPAPERS_DIR, filename)
-    edit_wallpaper(path, config["blur"], config["grey"], config["dim"])
-    return path
+    blur = config["blur"] or 0
+    grey = config["grey"] or 0
+    dim = config["dim"] or 0
+    ext = image_data["file_ext"]
+    new_path = os.path.join(EDITS_DIR, filename)
+    print("Editing wallpaper...")
+    edit_image(path, new_path, blur, grey, dim)
+    return new_path
 
 
 def main(argv=None):
