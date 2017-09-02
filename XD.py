@@ -55,6 +55,12 @@ INITIAL_CONFIG = {
 }
 
 
+def booru_mkdirs(directories=[DATA_DIR, WALLPAPERS_DIR, EDITS_DIR]):
+    """Create the directories needed to run this program."""
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+
+
 def sorted_files(directory):
     """Return a list of files sorted by modified date."""
     files = []
@@ -613,6 +619,7 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
+    booru_mkdirs()
     argparser = init_argparser()
     args = vars(argparser.parse_args(argv))
     config = get_config()
