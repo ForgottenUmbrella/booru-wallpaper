@@ -333,10 +333,37 @@ def set_wallpaper(path):
         raise NotImplementedError("OS is not yet supported.")
 
 
+def natural(num):
+    """Return a number if it is natural, else raise an error."""
+    # Will raise an error if num is a (string) float.
+    num = int(num)
+    if num <= 0:
+        raise ValueError("Number must be whole and greater than 0.")
+    return num
+
+
+def percentage(num):
+    """Return a number if between 0 and 1, else raise an error."""
+    num = float(num)
+    if num < 0 or num > 1:
+        raise ValueError("Number must be between 0 and 1.")
+    return num
+
+
+def nonnegative(num):
+    """Return a number if it isn't negative, else raise an error."""
+    num = float(num)
+    if num < 0:
+        raise ValueError("Number must be greater than or equal to 0.")
+    return num
+
+
 def init_argparser():
     """Return an ArgumentParser specialised for this script."""
-    percentage = range(0, 101)
-    percent_meta = "{0 ... 100}"
+    percent_meta = "{0.0,...,1.0}"
+    natural_meta = "{1,2,3,...}"
+    nonnegative_int_meta = "{0,1,2,...}"
+    nonnegative_float_meta = "{0.0,...}"
 
     main_parser = argparse.ArgumentParser(
         description="Utility to periodically set the wallpaper to a random "
@@ -400,33 +427,35 @@ def init_argparser():
         *args["imageboard"], **kwargs["imageboard"]
     )
     set_subparser.add_argument(
-        *args["attempts"], **kwargs["attempts"], type=int
+        *args["attempts"], **kwargs["attempts"], type=natural,
+        metavar=natural_meta
     )
     set_subparser.add_argument(
-        *args["scale"], **kwargs["scale"], type=float
+        *args["scale"], **kwargs["scale"], type=nonnegative,
+        metavar=nonnegative_float_meta
     )
     set_subparser.add_argument(
-        *args["keep"], **kwargs["keep"], type=wallpaper_num, metavar="{1 ...}"
+        *args["keep"], **kwargs["keep"], type=natural,
+        metavar=natural_meta
     )
     set_subparser.add_argument(
-        *args["rotation"], **kwargs["rotation"], type=int,
-        choices=range(0, 25), metavar="{1 ... 24}"
+        *args["period"], **kwargs["period"], type=nonnegative,
+        metavar=nonnegative_int_meta
+        # XXX: Can scheduling handle more than 24 hours?
+        # choices=range(0, 25), metavar="{1 ... 24}"
     )
     edit_group = set_subparser.add_argument_group(
         "wallpaper edit arguments",
         "immediately change the wallpaper's appearance"
     )
     edit_group.add_argument(
-        *args["blur"], **kwargs["blur"], type=int, choices=percentage,
-        metavar=percent_meta
+        *args["blur"], **kwargs["blur"], type=percentage, metavar=percent_meta
     )
     edit_group.add_argument(
-        *args["grey"], **kwargs["grey"], type=int, choices=percentage,
-        metavar=percent_meta
+        *args["grey"], **kwargs["grey"], type=percentage, metavar=percent_meta
     )
     edit_group.add_argument(
-        *args["dim"], **kwargs["dim"], type=int, choices=percentage,
-        metavar=percent_meta
+        *args["dim"], **kwargs["dim"], type=percentage, metavar=percent_meta
     )
 
     parent_subparser = argparse.ArgumentParser(add_help=False)
@@ -453,17 +482,6 @@ def init_argparser():
         add_help=False
     )
     return main_parser
-
-
-def wallpaper_num(x):
-    """Return a number if it is natural.
-
-    Used for validating the number of wallpapers to keep.
-    """
-    x = int(x)
-    if x <= 0:
-        raise argparse.ArgumentTypeError("Minimum number of wallpapers is 1")
-    return x
 
 
 def next_wallpaper(config):
