@@ -54,13 +54,6 @@ def makedirs(directories):
         os.makedirs(directory, exist_ok=True)
 
 
-@contextlib.contextmanager
-def spinner():
-    """Context manager for a spinning cursor so it prints neatly."""
-    yield wait_warmly()
-    print("\bDone.")
-
-
 def wait_warmly():
     """Yield parts of a spinning cursor."""
     chars = r"-\|/"
@@ -69,29 +62,11 @@ def wait_warmly():
             yield char
 
 
-def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
-    """Return a split and (perhaps more grammatical) rejoined string.
-
-    Args:
-        string (str): A list as a string to split and rejoin.
-        splitter (str): Delimiter used to split `string` into a list.
-            Defaults to " ".
-        joiner (str): Delimiter used to rejoin the split `string`.
-            Defaults to ", ".
-        final_joiner (str): Delimiter used to join the last element of
-            the split `string`. Defaults to " and ".
-
-    Returns:
-        str: The split and rejoined `string`.
-    """
-    string_as_list = string.split(splitter)
-    list_needs_joining = len(string_as_list) > 1
-    if list_needs_joining:
-        first_section = joiner.join(string_as_list[:-1])
-        gram_string = final_joiner.join([first_section, string_as_list[-1]])
-    else:
-        gram_string = string
-    return gram_string
+@contextlib.contextmanager
+def spinner():
+    """Context manager for a spinning cursor so it prints neatly."""
+    yield wait_warmly()
+    print("\bDone.")
 
 
 def screen_dimensions():
@@ -502,11 +477,8 @@ def wallpaper_info(image_data_path):
     info = []
     for key in ("artist", "character", "copyright"):
         real_key = f"tag_string_{key}"
-        info_list = gram_join(str(data[real_key]), final_joiner=", ")
-        info.extend(textwrap.wrap(
-            f"{key}: {info_list}",
-            subsequent_indent=" " * len(key+ ": ")
-        ))
+        info_list = ", ".join(str(data[real_key]).split())
+        info.extend(textwrap.wrap(f"{key}: {info_list}"))
     info.append(f"url: {data['post_url']}")
     return "\n".join(info)
 
@@ -560,42 +532,76 @@ def edit_image(in_path, out_path=None, blurriness=0, greyness=0, dimness=0):
     image.save(out_path)
 
 
-def get_config(path, initial_config):
-    """Return a stored config dict or a newly created one if missing."""
-    try:
-        config = read_json(path)
-    except FileNotFoundError:
-        LOGGER.info("Missing config")
-        config = initial_config
-        write_json(path, config)
-    return config
+class Config:
 
+    """Configuration object for this program."""
 
-def update_config(config_path, config, args):
-    """Update the config options if they've changed."""
-    for arg in config:
-        if args[arg] is not None:
-            config[arg] = args[arg]
-    write_json(config_path, config)
+    def __init__(self, data_dir):
+        self.initial = {
+            "tags": [],
+            "imageboard": "https://danbooru.donmai.us",
+            "attempts": 1,
+            "scale": 0.0,
+            "keep": 1,
+            "period": 0.0,
+            "blur": 0.0,
+            "grey": 0.0,
+            "dim": 0.0,
+        }
+        self.path = os.path.join(data_dir, "config.json")
+        try:
+            self.options = read_json(self.path)
+        except FileNotFoundError:
+            LOGGER.info("Missing config")
+            self.options = self.initial
+            self.write()
 
+    def __getitem__(self, key):
+        return self.options[key]
 
-def reset_config(path, config, initial_config, args):
-    """Restore some config options to initial values."""
-    none_specified = not any(args[arg] for arg in initial_config)
-    for arg in initial_config:
-        if args[arg] or none_specified:
-            config[arg] = initial_config[arg]
-    write_json(path, config)
+    def __setitem__(self, key, value):
+        self.options[key] = value
 
+    def __iter__(self):
+        return self.options.__iter__()
 
-def config_info(config, args):
-    """Return some config options."""
-    options = []
-    none_specified = not any(args[arg] for arg in config)
-    for arg in config:
-        if args[arg] or none_specified:
-            options.append(f"{arg}: {config[arg]}")
-    return "\n".join(options)
+    def __str__(self):
+        return str(self.options)
+
+    def __repr__(self):
+        return repr(self.options)
+
+    def write(self):
+        """Write the JSON config to its path."""
+        write_json(self.path, self.options)
+
+    def update(self, args):
+        """Update the config options if they've changed."""
+        for option in self:
+            if args[option] is not None:
+                self[option] = args[option]
+        self.write()
+
+    def reset(self, args):
+        """Restore config options to their initial values."""
+        none_specified = not any(args[option] for option in self)
+        for option in self:
+            if args[option] or none_specified:
+                self[option] = self.initial[option]
+        self.write()
+
+    def format(self, args):
+        """Return nicely formatted requested options."""
+        options = []
+        none_specified = not any(args[option] for option in self)
+        for option in self:
+            if args[option] or none_specified:
+                if isinstance(self[option], list):
+                    value = ", ".join(self[option])
+                else:
+                    value = self[option]
+                options.append(textwrap.fill(f"{option}: {value}"))
+        return "\n".join(options)
 
 
 def edit_booru_wallpaper(config, path, edits_dir):
@@ -610,12 +616,10 @@ def edit_booru_wallpaper(config, path, edits_dir):
     return new_path
 
 
-def update_and_edit(
-        config_path, image_data_path, wallpapers_dir, edits_dir, args):
+def update_and_edit(config, image_data_path, wallpapers_dir, edits_dir, args):
     """Update the config and edit the wallpaper if necessary."""
-    config = read_json(config_path)
-    update_config(config_path, config, args)
-    if any(config[edit] is not None for edit in ("blur", "grey", "dim")):
+    config.update(args)
+    if any(args[edit] is not None for edit in ("blur", "grey", "dim")):
         image_data = read_json(image_data_path)
         image_path = booru_image_path(image_data, wallpapers_dir)
         new_path = edit_booru_wallpaper(args, image_path, edits_dir)
@@ -633,24 +637,12 @@ def main(argv=None):
     """
     argparser = init_argparser()
     args = vars(argparser.parse_args(argv))
-    initial_config = {
-        "tags": [],
-        "imageboard": "https://danbooru.donmai.us",
-        "attempts": 1,
-        "scale": 0.0,
-        "keep": 1,
-        "period": 0,
-        "blur": 0.0,
-        "grey": 0.0,
-        "dim": 0.0,
-    }
     data_dir = os.path.join(ROOT_DIR, "data")
     image_data_path = os.path.join(data_dir, "image_data.json")
-    config_path = os.path.join(data_dir, "config.json")
     wallpapers_dir = os.path.join(ROOT_DIR, "wallpapers")
     edits_dir = os.path.join(ROOT_DIR, "edits")
     makedirs((data_dir, wallpapers_dir, edits_dir))
-    config = get_config(config_path, initial_config)
+    config = Config(data_dir)
 
     if args["verbose"]:
         _TERMINAL_HANDLER.setLevel(logging.DEBUG)
@@ -669,13 +661,13 @@ def main(argv=None):
     subcommand = args["subcommand"]
     if subcommand == "set":
         update_and_edit(
-            config_path, image_data_path, wallpapers_dir, edits_dir,
+            config, image_data_path, wallpapers_dir, edits_dir,
             args
         )
     if subcommand == "get":
-        print(config_info(config, args))
+        print(config.format(args))
     if subcommand == "reset":
-        reset_config(config_path, config, initial_config, args)
+        config.reset(args)
     if subcommand == "next":
         next_wallpaper(config, image_data_path, wallpapers_dir, edits_dir)
     if subcommand == "info":
