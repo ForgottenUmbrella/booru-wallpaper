@@ -529,26 +529,29 @@ def wallpaper_info(path=IMAGE_DATA_PATH):
     return "\n".join(info)
 
 
-def blur(image, blurriness):
+def blur_image(image, blur_ratio):
     """Return a blurry PIL image."""
-    blur_filter = PIL.ImageFilter.GaussianBlur(blurriness)
+    width = max(image.size)
+    # Divide by two, otherwise we get a diameter.
+    blur_radius = blur_ratio * width / 2
+    blur_filter = PIL.ImageFilter.GaussianBlur(blur_radius)
     new_image = image.filter(blur_filter)
     return new_image
 
 
-def grey(image, greyness):
+def grey_image(image, grey_ratio):
     """Return a grey PIL image."""
     enhancer = PIL.ImageEnhance.Color(image)
-    colour = (100 - greyness) / 100
-    new_image = enhancer.enhance(colour)
+    colour_ratio = 1 - grey_ratio
+    new_image = enhancer.enhance(colour_ratio)
     return new_image
 
 
-def dim(image, dimness):
+def dim_image(image, dim_ratio):
     """Return a dimmed PIL image."""
     enhancer = PIL.ImageEnhance.Brightness(image)
-    brightness = (100 - dimness) / 100
-    new_image = enhancer.enhance(brightness)
+    bright_ratio = 1 - dim_ratio
+    new_image = enhancer.enhance(bright_ratio)
     return new_image
 
 
@@ -559,19 +562,19 @@ def edit_image(in_path, out_path=None, blurriness=0, greyness=0, dimness=0):
         in_path (str): Location of image to be edited.
         out_path (str): Location of where to save the edited image.
             Defaults to the same as `in_path`.
-        blurriness (int): Percentage of how blurry the image should be.
+        blurriness (float): How blurry it should be, from 0 to 1.
             Defaults to 0.
-        greyness (int): Percentage of how monochrome the image should be.
+        greyness (float): How colourless it should be, from 0 to 1.
             Defaults to 0.
-        dimness (int): Percentage of how dim the image should be.
+        dimness (float): How dim it should be, from 0 to 1.
             Defaults to 0.
     """
     if out_path is None:
         out_path = in_path
     image = PIL.Image.open(in_path)
-    image = blur(image, blurriness)
-    image = grey(image, greyness)
-    image = dim(image, dimness)
+    image = blur_image(image, blurriness)
+    image = grey_image(image, greyness)
+    image = dim_image(image, dimness)
     image.save(out_path)
 
 
