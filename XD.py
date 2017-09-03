@@ -228,9 +228,10 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
     raise ValueError("No images were large enough.")
 
 
-def booru_image_name(image_data):
-    """Return the filename of a booru image."""
-    return os.path.basename(image_data["file_url"])
+def booru_image_path(image_data):
+    """Return the path of a booru image."""
+    filename = os.path.basename(image_data["file_url"])
+    return os.path.join(WALLPAPERS_DIR, filename)
 
 
 def remove_old_wallpapers(limit, directories=(WALLPAPERS_DIR, EDITS_DIR)):
@@ -495,13 +496,12 @@ def next_wallpaper(config):
         config["imageboard"], "posts", str(data["id"])
     )
     url = config["imageboard"] + data["file_url"]
-    filename = booru_image_name(data)
-    path = os.path.join(WALLPAPERS_DIR, filename)
+    path = booru_image_path(data)
     download(url, path)
     remove_old_wallpapers(config["keep"])
     edit = config["blur"] or config["grey"] or config["dim"]
     if edit:
-        path = edit_booru_wallpaper(config, data)
+        path = edit_booru_wallpaper(config, path)
     set_wallpaper(path)
     write_json(IMAGE_DATA_PATH, data)
 
@@ -596,7 +596,8 @@ def update_config(config, args):
     )
     if edit_config_changed:
         image_data = read_json(IMAGE_DATA_PATH)
-        new_path = edit_booru_wallpaper(args, image_data)
+        path = booru_image_path(image_data)
+        new_path = edit_booru_wallpaper(args, path)
         set_wallpaper(new_path)
     for arg in config:
         if args[arg] is not None:
@@ -625,13 +626,12 @@ def config_info(config, args):
     return "\n".join(options)
 
 
-def edit_booru_wallpaper(config, image_data):
+def edit_booru_wallpaper(config, path):
     """Modify the wallpaper in place and return its new path."""
-    filename = booru_image_name(image_data)
-    path = os.path.join(WALLPAPERS_DIR, filename)
     blur = config["blur"] or 0
     grey = config["grey"] or 0
     dim = config["dim"] or 0
+    filename = os.path.basename(path)
     new_path = os.path.join(EDITS_DIR, filename)
     print("Editing wallpaper...")
     edit_image(path, new_path, blur, grey, dim)
