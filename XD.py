@@ -48,14 +48,14 @@ INITIAL_CONFIG = {
     "attempts": 1,
     "scale": 0.0,
     "keep": 1,
-    "rotation": 0,
+    "period": 0,
     "blur": 0.0,
     "grey": 0.0,
     "dim": 0.0,
 }
 
 
-def booru_mkdirs(directories=[DATA_DIR, WALLPAPERS_DIR, EDITS_DIR]):
+def booru_mkdirs(directories=(DATA_DIR, WALLPAPERS_DIR, EDITS_DIR)):
     """Create the directories needed to run this program."""
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
@@ -75,15 +75,15 @@ def sorted_files(directory):
 def spinner():
     """Context manager for a spinning cursor so it prints neatly."""
     yield wait_warmly()
-    print()
+    print("\bDone.")
 
 
 def wait_warmly():
     """Yield parts of a spinning cursor."""
     chars = r"-\|/"
     while True:
-        for c in chars:
-            yield "\r" + c
+        for char in chars:
+            yield "\r" + char
 
 
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
@@ -140,7 +140,7 @@ def download(url, path):
             spinner() as cursors:
         chunks = response.iter_content(chunk_size=128)
         for cursor, chunk in zip(cursors, chunks):
-            print(cursor, "Downloading...", end="")
+            print("Downloading...", cursor, end="")
             file.write(chunk)
 
 
@@ -158,12 +158,13 @@ def get_json(url, params):
     #     RequestError: If the request is unsuccessful.
     #     ValueError: If no JSON data is available from `url`.
     """
+    # XXX: Is this needed?
     # success = range(100, 400)
     try:
         response = requests.get(url, params=params)
     except requests.exceptions.ConnectionError:
-        print("No internet connection.")
-        sys.exit(1)
+        print("No internet connection. Please connect to the internet.")
+        sys.exit(126)
     status = response.status_code
     LOGGER.debug(f"status = {status}")
     # succeeded = status in success
@@ -218,11 +219,11 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
         # except ValueError as ex:
         #     LOGGER.error(ex)
         #     raise ValueError("Invalid/conflicting tags.") from None
-        good_fit = (
+        good_size = (
             data["image_height"] >= screen_height * scale and
             data["image_width"] >= screen_width * scale
         )
-        if good_fit:
+        if good_size:
             return data
     raise ValueError("No images were large enough.")
 
@@ -232,7 +233,7 @@ def booru_image_name(image_data):
     return os.path.basename(image_data["file_url"])
 
 
-def remove_old_wallpapers(limit, directories=[WALLPAPERS_DIR, EDITS_DIR]):
+def remove_old_wallpapers(limit, directories=(WALLPAPERS_DIR, EDITS_DIR)):
     """Delete old wallpapers if there are too many in the folders."""
     print("Removing old wallpapers...")
     for directory in directories:
@@ -281,12 +282,12 @@ def set_linux_wallpaper(path):
     else:
         command = f"feh --bg-scale {path}"
         print(textwrap.fill(
-            "If you're using a standalone WM, make sure to configure it to "
-            "use feh as the wallpaper source."
+            "Make sure to configure your window manager/desktop environment "
+            "to use feh as the wallpaper source."
         ))
         print(textwrap.fill(
             "For example, if you're using i3, your ~/.config/i3/config should "
-            "contain the line, 'exec_always --no-startup-id ~/.fehbg'."
+            "contain: 'exec_always --no-startup-id ~/.fehbg'."
         ))
     subprocess.call(command, shell=True)
 
@@ -352,7 +353,7 @@ def init_argparser():
         "attempts": ("-a", "--attempts"),
         "scale": ("-s", "--scale"),
         "keep": ("-k", "--keep"),
-        "rotation": ("-r", "--rotation"),
+        "period": ("-p", "--period"),
         "blur": ("-b", "--blur"),
         "grey": ("-g", "--grey"),
         "dim": ("-d", "--dim"),
@@ -373,8 +374,10 @@ def init_argparser():
         "keep": {
             "help": "number of wallpapers to store",
         },
-        "rotation": {
-            "help": "hours to wait before changing wallpapers",
+        "period": {
+            "help":
+                "hours to wait before changing wallpapers (a value of 0 means "
+                "it will never change)",
         },
         "blur": {
             "help": "percentage of blurriness",
@@ -470,13 +473,15 @@ def next_wallpaper(config):
         scale=config["scale"]
     )
     # Patch so info subcommand can display source.
-    data["post_url"] = os.path.join(config["imageboard"], "posts", data["id"])
+    data["post_url"] = os.path.join(
+        config["imageboard"], "posts", str(data["id"])
+    )
     url = config["imageboard"] + data["file_url"]
     filename = booru_image_name(data)
     path = os.path.join(WALLPAPERS_DIR, filename)
     download(url, path)
     remove_old_wallpapers(config["keep"])
-    edit = blur or grey or dim
+    edit = config["blur"] or config["grey"] or config["dim"]
     if edit:
         path = edit_booru_wallpaper(config, data)
     set_wallpaper(path)
@@ -488,8 +493,11 @@ def wallpaper_info(path=IMAGE_DATA_PATH):
     try:
         data = read_json(path)
     except FileNotFoundError:
-        print("No information on wallpaper.")
-        sys.exit(1)
+        print(textwrap.fill(
+            "There is no information on the wallpaper, as it was not set "
+            "through this program."
+        ))
+        sys.exit(2)
     LOGGER.debug(f"data = {data}")
     info = []
     for key in ("artist", "character", "copyright"):
@@ -603,7 +611,6 @@ def edit_booru_wallpaper(config, image_data):
     blur = config["blur"] or 0
     grey = config["grey"] or 0
     dim = config["dim"] or 0
-    ext = image_data["file_ext"]
     new_path = os.path.join(EDITS_DIR, filename)
     print("Editing wallpaper...")
     edit_image(path, new_path, blur, grey, dim)
@@ -636,7 +643,7 @@ def main(argv=None):
     no_args = (len(sys.argv) == 1)
     if no_args:
         argparser.print_help()
-        sys.exit(1)
+        sys.exit(2)
 
     subcommand = args["subcommand"]
     if subcommand == "set":
