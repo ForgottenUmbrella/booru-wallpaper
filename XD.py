@@ -20,11 +20,6 @@ import PIL.ImageFilter
 
 SCRIPT_PATH = os.path.realpath(__file__)
 ROOT_DIR = os.path.dirname(SCRIPT_PATH)
-DATA_DIR = os.path.join(ROOT_DIR, "data")
-IMAGE_DATA_PATH = os.path.join(DATA_DIR, "image_data.json")
-CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
-WALLPAPERS_DIR = os.path.join(ROOT_DIR, "wallpapers")
-EDITS_DIR = os.path.join(ROOT_DIR, "edits")
 LOG_PATH = os.path.join(ROOT_DIR, "log")
 
 LOGGER = logging.getLogger(__name__)
@@ -42,24 +37,6 @@ _TERMINAL_HANDLER.setFormatter(_TERMINAL_FORMATTER)
 LOGGER.addHandler(_DEBUG_HANDLER)
 LOGGER.addHandler(_TERMINAL_HANDLER)
 
-INITIAL_CONFIG = {
-    "tags": [],
-    "imageboard": "https://danbooru.donmai.us",
-    "attempts": 1,
-    "scale": 0.0,
-    "keep": 1,
-    "period": 0,
-    "blur": 0.0,
-    "grey": 0.0,
-    "dim": 0.0,
-}
-
-
-def booru_mkdirs(directories=(DATA_DIR, WALLPAPERS_DIR, EDITS_DIR)):
-    """Create the directories needed to run this program."""
-    for directory in directories:
-        os.makedirs(directory, exist_ok=True)
-
 
 def sorted_files(directory):
     """Return a list of files sorted by modified date."""
@@ -69,6 +46,12 @@ def sorted_files(directory):
         files.append(path)
     files.sort(key=os.path.getmtime)
     return files
+
+
+def makedirs(directories):
+    """Create directories if they are missing."""
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
 
 
 @contextlib.contextmanager
@@ -83,7 +66,7 @@ def wait_warmly():
     chars = r"-\|/"
     while True:
         for char in chars:
-            yield "\r" + char
+            yield char
 
 
 def gram_join(string, splitter=" ", joiner=", ", final_joiner=" and "):
@@ -140,7 +123,7 @@ def download(url, path):
             spinner() as cursors:
         chunks = response.iter_content(chunk_size=128)
         for cursor, chunk in zip(cursors, chunks):
-            print("Downloading...", cursor, end="")
+            print("\rDownloading...", cursor, end="")
             file.write(chunk)
 
 
@@ -228,13 +211,13 @@ def get_image_data(tags, imageboard, attempts=1, scale=1.0):
     raise ValueError("No images were large enough.")
 
 
-def booru_image_path(image_data):
+def booru_image_path(image_data, wallpapers_dir):
     """Return the path of a booru image."""
     filename = os.path.basename(image_data["file_url"])
-    return os.path.join(WALLPAPERS_DIR, filename)
+    return os.path.join(wallpapers_dir, filename)
 
 
-def remove_old_wallpapers(limit, directories=(WALLPAPERS_DIR, EDITS_DIR)):
+def remove_old_wallpapers(limit, directories):
     """Delete old wallpapers if there are too many in the folders."""
     print("Removing old wallpapers...")
     for directory in directories:
@@ -284,7 +267,7 @@ def set_linux_wallpaper(path):
         command = f"feh --bg-scale {path}"
         print(textwrap.fill(
             "Make sure to configure your window manager/desktop environment "
-            "to use feh as the wallpaper source."
+            "to use `feh` as the wallpaper source."
         ))
         print(textwrap.fill(
             "For example, if you're using i3, your ~/.config/i3/config should "
@@ -485,7 +468,7 @@ def init_argparser():
     return main_parser
 
 
-def next_wallpaper(config):
+def next_wallpaper(config, image_data_path, wallpapers_dir, edits_dir):
     """Set the next wallpaper, and write its image data."""
     data = get_image_data(
         config["tags"], config["imageboard"], attempts=config["attempts"],
@@ -496,20 +479,19 @@ def next_wallpaper(config):
         config["imageboard"], "posts", str(data["id"])
     )
     url = config["imageboard"] + data["file_url"]
-    path = booru_image_path(data)
+    path = booru_image_path(data, wallpapers_dir)
     download(url, path)
-    remove_old_wallpapers(config["keep"])
-    edit = config["blur"] or config["grey"] or config["dim"]
-    if edit:
-        path = edit_booru_wallpaper(config, path)
+    remove_old_wallpapers(config["keep"], (wallpapers_dir, edits_dir))
+    if any(config[edit] != 0 for edit in ("blur", "grey", "dim")):
+        path = edit_booru_wallpaper(config, path, edits_dir)
     set_wallpaper(path)
-    write_json(IMAGE_DATA_PATH, data)
+    write_json(image_data_path, data)
 
 
-def wallpaper_info(path=IMAGE_DATA_PATH):
+def wallpaper_info(image_data_path):
     """Return information about the current wallpaper."""
     try:
-        data = read_json(path)
+        data = read_json(image_data_path)
     except FileNotFoundError:
         print(textwrap.fill(
             "There is no information on the wallpaper, as it was not set "
@@ -578,42 +560,32 @@ def edit_image(in_path, out_path=None, blurriness=0, greyness=0, dimness=0):
     image.save(out_path)
 
 
-def get_config(path=CONFIG_PATH):
+def get_config(path, initial_config):
     """Return a stored config dict or a newly created one if missing."""
     try:
         config = read_json(path)
     except FileNotFoundError:
         LOGGER.info("Missing config")
-        config = INITIAL_CONFIG
+        config = initial_config
         write_json(path, config)
     return config
 
 
-def update_config(config, args):
-    """Update config and edit wallpaper if edit settings changed."""
-    edit_config_changed = any(
-        args[edit] is not None for edit in ("blur", "grey", "dim")
-    )
-    if edit_config_changed:
-        image_data = read_json(IMAGE_DATA_PATH)
-        path = booru_image_path(image_data)
-        new_path = edit_booru_wallpaper(args, path)
-        set_wallpaper(new_path)
+def update_config(config_path, config, args):
+    """Update the config options if they've changed."""
     for arg in config:
         if args[arg] is not None:
             config[arg] = args[arg]
-    write_json(CONFIG_PATH, config)
+    write_json(config_path, config)
 
 
-def reset_config(config, args, initial=None):
+def reset_config(path, config, initial_config, args):
     """Restore some config options to initial values."""
-    if initial is None:
-        initial = INITIAL_CONFIG
-    none_specified = not any(args[arg] for arg in initial)
-    for arg in initial:
+    none_specified = not any(args[arg] for arg in initial_config)
+    for arg in initial_config:
         if args[arg] or none_specified:
-            config[arg] = initial[arg]
-    write_json(CONFIG_PATH, config)
+            config[arg] = initial_config[arg]
+    write_json(path, config)
 
 
 def config_info(config, args):
@@ -626,16 +598,28 @@ def config_info(config, args):
     return "\n".join(options)
 
 
-def edit_booru_wallpaper(config, path):
+def edit_booru_wallpaper(config, path, edits_dir):
     """Modify the wallpaper in place and return its new path."""
     blur = config["blur"] or 0
     grey = config["grey"] or 0
     dim = config["dim"] or 0
     filename = os.path.basename(path)
-    new_path = os.path.join(EDITS_DIR, filename)
+    new_path = os.path.join(edits_dir, filename)
     print("Editing wallpaper...")
     edit_image(path, new_path, blur, grey, dim)
     return new_path
+
+
+def update_and_edit(
+        config_path, image_data_path, wallpapers_dir, edits_dir, args):
+    """Update the config and edit the wallpaper if necessary."""
+    config = read_json(config_path)
+    update_config(config_path, config, args)
+    if any(config[edit] is not None for edit in ("blur", "grey", "dim")):
+        image_data = read_json(image_data_path)
+        image_path = booru_image_path(image_data, wallpapers_dir)
+        new_path = edit_booru_wallpaper(args, image_path, edits_dir)
+        set_wallpaper(new_path)
 
 
 def main(argv=None):
@@ -647,10 +631,26 @@ def main(argv=None):
     Raises:
         ValueError: If the user provided an invalid command.
     """
-    booru_mkdirs()
     argparser = init_argparser()
     args = vars(argparser.parse_args(argv))
-    config = get_config()
+    initial_config = {
+        "tags": [],
+        "imageboard": "https://danbooru.donmai.us",
+        "attempts": 1,
+        "scale": 0.0,
+        "keep": 1,
+        "period": 0,
+        "blur": 0.0,
+        "grey": 0.0,
+        "dim": 0.0,
+    }
+    data_dir = os.path.join(ROOT_DIR, "data")
+    image_data_path = os.path.join(data_dir, "image_data.json")
+    config_path = os.path.join(data_dir, "config.json")
+    wallpapers_dir = os.path.join(ROOT_DIR, "wallpapers")
+    edits_dir = os.path.join(ROOT_DIR, "edits")
+    makedirs((data_dir, wallpapers_dir, edits_dir))
+    config = get_config(config_path, initial_config)
 
     if args["verbose"]:
         _TERMINAL_HANDLER.setLevel(logging.DEBUG)
@@ -668,15 +668,18 @@ def main(argv=None):
 
     subcommand = args["subcommand"]
     if subcommand == "set":
-        update_config(config, args)
+        update_and_edit(
+            config_path, image_data_path, wallpapers_dir, edits_dir,
+            args
+        )
     if subcommand == "get":
         print(config_info(config, args))
     if subcommand == "reset":
-        reset_config(config, args)
+        reset_config(config_path, config, initial_config, args)
     if subcommand == "next":
-        next_wallpaper(config)
+        next_wallpaper(config, image_data_path, wallpapers_dir, edits_dir)
     if subcommand == "info":
-        print(wallpaper_info())
+        print(wallpaper_info(image_data_path))
 
 
 if __name__ == "__main__":
